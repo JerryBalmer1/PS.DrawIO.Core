@@ -1,0 +1,25 @@
+#!/bin/sh
+# Reject low-signal commit messages.
+msg=$(head -n1 "$1")
+
+case "$msg" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+
+if [ ${#msg} -lt 15 ]; then
+  echo "commit-msg: subject too short (${#msg} chars, minimum 15)." >&2
+  echo "  got: $msg" >&2
+  exit 1
+fi
+
+if [ ${#msg} -gt 72 ]; then
+  echo "commit-msg: subject too long (${#msg} chars, maximum 72)." >&2
+  exit 1
+fi
+
+if echo "$msg" | grep -Eiq '^(bug ?fix|fix|fixed|fixes|update|updated|wip|changes|stuff|misc|cleanup|refactor|test|temp)\.?$'; then
+  echo "commit-msg: '$msg' says nothing. Describe what changed and why." >&2
+  exit 1
+fi
+
+exit 0

@@ -1,0 +1,9 @@
+_AgentRequests.md
+dist/
+testResults.xml
+coverage.xml
+*.coverage
+TestResults*.xml
+docs/__AgentHandoff.md
+docs/_tmp_*
+agent-scratch/

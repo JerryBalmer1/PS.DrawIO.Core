@@ -1,0 +1,37 @@
+name: Core CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Sign-off acceptance needs full history so cat-file/merge-base can
+          # resolve docs/SIGNOFF.json Commit (parent of countersign HEAD).
+          fetch-depth: 0
+      - name: Trust PSGallery
+        shell: pwsh
+        run: Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+      - name: Install Pester and PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # Pin to Pester 5.x: acceptance coverage still uses legacy
+          # Invoke-Pester -CodeCoverage (removed in Pester 6).
+          Install-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -Scope CurrentUser
+          Install-Module PSScriptAnalyzer -MinimumVersion 1.21.0 -Force -Scope CurrentUser
+      - name: Build
+        shell: pwsh
+        run: |
+          ./build/build.ps1
+          # build.ps1 uses `exit 1` on CI test failure. Under GHA's pwsh shell
+          # (dot-sourced runner script + call-operator), nested exit sets
+          # $LASTEXITCODE but does not fail the process unless we re-exit.
+          if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
