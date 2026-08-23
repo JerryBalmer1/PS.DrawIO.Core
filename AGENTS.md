@@ -186,6 +186,20 @@ Clear `.agent/EXECUTION.md` and write its Plan section before the first command.
 8. End every task with the verification block.
 9. Write the outcome of each plan step into `.agent/EXECUTION.md` BEFORE starting the next step. Tick the box, record the result in one line, and record the cause if it failed. A log written at the end is a log lost to a context blowout or a killed process.
 10. Every task begins by ticking the first box and ends with every box ticked or explicitly marked blocked. A plan with unticked boxes and no Blocked entry means the log was not maintained.
+11. When a task is complete, archive the log before reporting:
+
+        $stamp = Get-Date -Format 'yyyy-MM-dd-HH-mm-ss'
+        Move-Item .agent/EXECUTION.md ".agent/EXECUTION_RECORDS/$stamp-EXECUTION.md"
+
+    Note the format string: `HH` is 24-hour, `mm` is minutes, `MM` is months.
+    Getting those backwards produces a filename that sorts wrongly and is
+    silently useless.
+
+    Archive only a log with every plan box ticked or explicitly marked blocked.
+    A log archived mid-task is a record of nothing.
+
+    Never edit, rename, or delete an existing record. Read them freely — a
+    prior record is often the fastest way to understand how something was done.
 
 ### Feasibility pass
 

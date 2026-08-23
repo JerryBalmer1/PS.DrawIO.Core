@@ -1,0 +1,335 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "agent-baseline",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_baseline.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-regen-goldens",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_regen_goldens.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-regen-goldens-2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_regen_goldens.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-teeth",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_teeth.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-final",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_final.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-write-exec",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_write_exec.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-cleanup",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_cleanup.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-t0-inspect",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_t0.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-probe-schema",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent\\_agent_probe_schema.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-write-probe2",
+			"type": "shell",
+			"command": "$p = '.agent/_agent_probe_schema.ps1'; @'\n$ErrorActionPreference = 'Stop'\nSet-Location -LiteralPath (Join-Path $PSScriptRoot '..')\nImport-Module ./src/PS.DrawIO.Core.psd1 -Force\n$mod = Get-Module PS.DrawIO.Core\n& $mod {\n    . (Join-Path $PSScriptRoot 'Private/Resolve-PSDrawIOSchemaPath.ps1')\n    . (Join-Path $PSScriptRoot 'Private/Test-PSDrawIODiagramStructuralRoot.ps1')\n    . (Join-Path $PSScriptRoot 'Public/Test-PSDrawIODiagramSchema.ps1')\n}\n$bareIr = [pscustomobject]@{\n    Nodes = @([pscustomobject]@{ Id='n1'; Label='Bare'; Style='whiteSpace=wrap;html=1;'; X=10; Y=10; Width=80; Height=40; Metadata=[pscustomobject]@{} })\n    Edges = @()\n}\n$uoIr = [pscustomobject]@{\n    Nodes = @([pscustomobject]@{ Id='n1'; Label='Wrapped'; Style='whiteSpace=wrap;html=1;'; X=10; Y=10; Width=80; Height=40; Link='vscode://file/x.ps1:1'; Metadata=[pscustomobject]@{ XmlAttributes=[pscustomobject]@{ customAttr='keep-me' } } })\n    Edges = @()\n}\n$bareXml = & $mod { param($ir) ConvertTo-PSDrawIODiagramXml -IR $ir } $bareIr\n$uoXml = & $mod { param($ir) ConvertTo-PSDrawIODiagramXml -IR $ir } $uoIr\nWrite-Output '---BARE---'\nWrite-Output $bareXml\nWrite-Output '---UO---'\nWrite-Output $uoXml\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $bareXml | Out-Null; Write-Output 'BARE_VALID=OK' } catch { Write-Output (\"BARE_VALID=FAIL {0}\" -f $_.Exception.Message) }\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $uoXml | Out-Null; Write-Output 'UO_VALID=OK' } catch { Write-Output (\"UO_VALID=FAIL {0}\" -f $_.Exception.Message) }\n$g = Get-Content -LiteralPath ./tests/Fixtures/Golden/hand-unknown-attrs.drawio -Raw\nWrite-Output '---GOLDEN---'\nWrite-Output $g\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $g | Out-Null; Write-Output 'GOLDEN_UNKNOWN_VALID=OK' } catch { Write-Output (\"GOLDEN_UNKNOWN_VALID=FAIL {0}\" -f $_.Exception.Message) }\n$graph = [pscustomobject]@{ Provider='Demo'; Nodes=@([pscustomobject]@{ Id='Demo:Widget:Get-Item'; Type='Widget'; Name='Get-Item'; Label='Get-Item' }, [pscustomobject]@{ Id='Demo:Widget:Set-Item'; Type='Widget'; Name='Set-Item'; Label='Set-Item' }); Edges=@([pscustomobject]@{ From='Demo:Widget:Get-Item'; To='Demo:Widget:Set-Item'; Type='DependsOn' }) }\n$ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo\n$laid = Invoke-PSDrawIOLayout -IR $ir\n$accXml = & $mod { param($i) ConvertTo-PSDrawIODiagramXml -IR $i } $laid\nWrite-Output '---ACC---'\nWrite-Output $accXml\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $accXml | Out-Null; Write-Output 'ACC_VALID=OK' } catch { Write-Output (\"ACC_VALID=FAIL {0}\" -f $_.Exception.Message) }\n'@ | Set-Content -LiteralPath $p -Encoding utf8; & 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File $p",
+			"group": "test"
+		},
+		{
+			"label": "agent-xsd-id-rules",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; $lines = Get-Content -LiteralPath 'src/Schema/mxfile.xsd'; for ($i=0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match 'UserObject|unique|name=\\\"id\\\"|mxCellType|anyAttribute') { '{0}:{1}' -f ($i+1), $lines[$i].Trim() } }\"",
+			"group": "test"
+		},
+		{
+			"label": "agent-stash-export-diff",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"git stash show -p 'stash@{0}' -- src/Public/Export-PSDrawIODiagram.ps1 src/PS.DrawIO.Core.psd1 src/PS.DrawIO.Core.psm1 LICENSE README.md tests/Unit/Core.Tests.ps1 | Select-Object -First 250\"",
+			"group": "test"
+		},
+		{
+			"label": "agent-cleanup-and-probe",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Remove-Item -LiteralPath '.agent/_agent_probe_schema.ps1','.agent/_agent_t0.ps1','.agent/_agent_write_probe.ps1' -Force -ErrorAction SilentlyContinue; Set-Content -LiteralPath '.agent/_agent_probe_schema.ps1' -Encoding utf8 -Value @'\r\n$ErrorActionPreference = 'Stop'\r\nSet-Location -LiteralPath (Join-Path $PSScriptRoot '..')\r\nImport-Module ./src/PS.DrawIO.Core.psd1 -Force\r\n$mod = Get-Module PS.DrawIO.Core\r\n$srcRoot = Join-Path (Get-Location) 'src'\r\n& $mod {\r\n    param($root)\r\n    . (Join-Path $root 'Private/Resolve-PSDrawIOSchemaPath.ps1')\r\n    . (Join-Path $root 'Private/Test-PSDrawIODiagramStructuralRoot.ps1')\r\n    . (Join-Path $root 'Public/Test-PSDrawIODiagramSchema.ps1')\r\n} $srcRoot\r\n$bareIr = [pscustomobject]@{ Nodes = @([pscustomobject]@{ Id='n1'; Label='Bare'; Style='whiteSpace=wrap;html=1;'; X=10; Y=10; Width=80; Height=40; Metadata=[pscustomobject]@{} }); Edges = @() }\r\n$uoIr = [pscustomobject]@{ Nodes = @([pscustomobject]@{ Id='n1'; Label='Wrapped'; Style='whiteSpace=wrap;html=1;'; X=10; Y=10; Width=80; Height=40; Link='vscode://file/x.ps1:1'; Metadata=[pscustomobject]@{ XmlAttributes=[pscustomobject]@{ customAttr='keep-me' } } }); Edges = @() }\r\n$bareXml = & $mod { param($ir) ConvertTo-PSDrawIODiagramXml -IR $ir } $bareIr\r\n$uoXml = & $mod { param($ir) ConvertTo-PSDrawIODiagramXml -IR $ir } $uoIr\r\nWrite-Output '---BARE---'\r\nWrite-Output $bareXml\r\nWrite-Output '---UO---'\r\nWrite-Output $uoXml\r\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $bareXml | Out-Null; 'BARE_VALID=OK' } catch { 'BARE_VALID=FAIL ' + $_.Exception.Message }\r\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $uoXml | Out-Null; 'UO_VALID=OK' } catch { 'UO_VALID=FAIL ' + $_.Exception.Message }\r\n$g = Get-Content -LiteralPath ./tests/Fixtures/Golden/hand-unknown-attrs.drawio -Raw\r\nWrite-Output '---GOLDEN---'\r\nWrite-Output $g\r\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $g | Out-Null; 'GOLDEN_UNKNOWN_VALID=OK' } catch { 'GOLDEN_UNKNOWN_VALID=FAIL ' + $_.Exception.Message }\r\n$graph = [pscustomobject]@{ Provider='Demo'; Nodes=@([pscustomobject]@{ Id='Demo:Widget:Get-Item'; Type='Widget'; Name='Get-Item'; Label='Get-Item' },[pscustomobject]@{ Id='Demo:Widget:Set-Item'; Type='Widget'; Name='Set-Item'; Label='Set-Item' }); Edges=@([pscustomobject]@{ From='Demo:Widget:Get-Item'; To='Demo:Widget:Set-Item'; Type='DependsOn' }) }\r\n$ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo\r\n$laid = Invoke-PSDrawIOLayout -IR $ir\r\n$accXml = & $mod { param($i) ConvertTo-PSDrawIODiagramXml -IR $i } $laid\r\nWrite-Output '---ACC---'\r\nWrite-Output $accXml\r\ntry { & $mod { param($c) Test-PSDrawIODiagramSchema -Content $c } $accXml | Out-Null; 'ACC_VALID=OK' } catch { 'ACC_VALID=FAIL ' + $_.Exception.Message }\r\n'@; & 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_probe_schema.ps1'\"",
+			"group": "test"
+		},
+		{
+			"label": "agent-stash-extract",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; $tmp=Join-Path $env:TEMP 'psdrawio_stash0'; if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force}; New-Item -ItemType Directory -Path $tmp | Out-Null; git stash show -p -- 'stash@{0}' | Set-Content -LiteralPath (Join-Path $tmp 'stash0.patch') -Encoding utf8; (Get-Item (Join-Path $tmp 'stash0.patch')).Length; Select-String -Path (Join-Path $tmp 'stash0.patch') -Pattern 'Test-PSDrawIODiagramSchema|Third-party|mxfile.xsd|FunctionsToExport|schema validation' | Select-Object -First 40 | ForEach-Object { $_.Line.Substring(0,[Math]::Min(160,$_.Line.Length)) }\"",
+			"group": "test"
+		},
+		{
+			"label": "agent-extract-stash-parts",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File - <<'EOF'\n# placeholder\nEOF\n& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Set-Content -LiteralPath '.agent/_agent_extract.ps1' -Encoding utf8 -Value (Get-Content -Raw -LiteralPath (Join-Path $env:TEMP 'psdrawio_stash0/stash0.patch') | Out-String | ForEach-Object { $_ }); Write-Output 'use separate'\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-split-stash-patch",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; $p=Join-Path $env:TEMP 'psdrawio_stash0/stash0.patch'; $c=Get-Content -LiteralPath $p -Raw; $i=$c.IndexOf('diff --git a/src/Public/Export-PSDrawIODiagram.ps1'); $j=$c.IndexOf('diff --git a/tests/Unit/Core.Tests.ps1'); Write-Output ('i='+$i+' j='+$j); if($i -ge 0 -and $j -gt $i){ Set-Content -LiteralPath (Join-Path $env:TEMP 'psdrawio_stash0/export.patch') -Value $c.Substring($i,$j-$i) -Encoding utf8; 'export ok' }; if($j -ge 0){ Set-Content -LiteralPath (Join-Path $env:TEMP 'psdrawio_stash0/unit.patch') -Value $c.Substring($j) -Encoding utf8; 'unit ok '+(Get-Item (Join-Path $env:TEMP 'psdrawio_stash0/unit.patch')).Length }\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-write-execution",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"@'\n# Execution log\nRun: 2026-03-28 | Repo: PS.DrawIO.Core\nTask: XSD schema validation slice\n\n## Plan\n- [x] T0 inventory + SHA verify + dual-id probe\n- [ ] T1 baseline suite\n- [x] T2 feasibility\n- [ ] T3 ADR 0005 finalize\n- [ ] T4 export Test-PSDrawIODiagramSchema\n- [ ] T5 Export validates before write\n- [ ] T6 LICENSE README\n- [ ] T7 unit tests\n- [ ] T8 CHANGELOG\n- [ ] T9 package src/dist proof\n- [ ] T10 teeth\n- [ ] T11 Analyze + final suite\n- [ ] T12 verification cleanup\n\n## Feasibility\n1. Fail: missing id 0; invalid root; SHA mismatch; missing Schema in dist; Export invalid leaves no file\n2. Artifacts: mxfile.xsd EXISTS pin match; validator EXISTS; ADR0005 EXISTS; acceptance Its DO NOT EDIT\n3. Cross-repo: none\n\n## Notes\nProbe: BARE/UO/GOLDEN/ACC VALID=OK with dual-id. Do not omit nested mxCell id.\n'@ | Set-Content -LiteralPath '.agent/EXECUTION.md' -Encoding utf8\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-run-unit-schema",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_run_unit.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-teeth-analyze",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_teeth.ps1'; & 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_analyze.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-full-suite",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_full_suite.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-schema-accept-verify",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_schema_accept.ps1'; & 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_verify.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cleanup-temps",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Get-ChildItem -LiteralPath '.agent' -Filter '_agent_*' | Remove-Item -Force; Get-ChildItem -LiteralPath '.agent' -Filter '_agent_*' | Measure-Object | ForEach-Object { 'REMAINING=' + $_.Count }\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-cleanup-fix",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Get-ChildItem -LiteralPath '.agent' -Filter '_agent_*' -File | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force; Write-Output ('REMOVED ' + $_.Name) }; Write-Output ('REMAINING=' + @(Get-ChildItem -LiteralPath '.agent' -Filter '_agent_*' -File).Count)\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-write-execution-final",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"$p='.agent/EXECUTION.md'; @(\n'# Execution log',\n'Run: 2026-03-28 | Repo: PS.DrawIO.Core',\n'Task: XSD schema validation slice',\n'',\n'## Plan',\n'- [x] T0 inventory + SHA + dual-id probe',\n'- [x] T1 baseline skipped; final authoritative',\n'- [x] T2 feasibility',\n'- [x] T3 ADR 0005 dual-id consequence fix',\n'- [x] T4 psd1/psm1 export Test-PSDrawIODiagramSchema',\n'- [x] T5 Export validates before write',\n'- [x] T6 LICENSE + README',\n'- [x] T7 unit tests',\n'- [x] T8 CHANGELOG',\n'- [x] T9 package src/dist proof',\n'- [x] T10 teeth',\n'- [x] T11 Analyze 0 + final suite',\n'- [x] T12 verification cleanup',\n'',\n'## Results',\n'- Unit 48/48 pass',\n'- Full 90/94 pass; 4 pre-existing OOS failures',\n'- Schema acceptance Its BOTH PASS',\n'- Analyze 0',\n'- SRC_XSD=True DIST_XSD=True DIST_VALIDATE=True',\n'',\n'## Teeth',\n'TEETH1 missing id=0 throws schema',\n'TEETH2 not-valid-mxfile throws schema',\n'TEETH4 hash pin match',\n'',\n'## Deliberately NOT done',\n'- No emitter reshape',\n'- No acceptance/CORE/SIGNOFF edits',\n'- No commit/push',\n'- Did not fix OOS acceptance failures'\n) -join \"`n\" | Set-Content -LiteralPath $p -Encoding utf8; 'EXECUTION_WRITTEN'\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_finish.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-t0-status",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Set-Location 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core'; Write-Output '===STATUS==='; git status --short; Write-Output '===LOG==='; git log --oneline -5; Write-Output '===ADR0006 HEAD==='; git show HEAD:docs/DECISIONS/0006-schema-validation-conflicts-with-attribute-preservation.md | Select-Object -First 8; Write-Output '===ADR0006 WORKTREE==='; Get-Content -LiteralPath 'docs/DECISIONS/0006-schema-validation-conflicts-with-attribute-preservation.md' -TotalCount 8; Write-Output '===CONVERTTO SNIP==='; Select-String -Path 'src/Private/ConvertTo-PSDrawIODiagramXml.ps1' -Pattern 'UserObject|Option A|customAttr' | ForEach-Object { $_.LineNumber.ToString() + ':' + $_.Line.Trim() }; Write-Output '===GOLDEN==='; Get-Content -LiteralPath 'tests/Fixtures/Golden/hand-unknown-attrs.drawio' -Raw | ForEach-Object { if($_ -match 'UserObject'){'HAS_UO'} else {'NO_UO'}; $_ }\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-bootstrap-adr0006",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_bootstrap.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-t1-feasibility",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t1_feasibility.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-t2-baseline",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t2_baseline.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-t9-final",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t9_final.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-t9b-targeted",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t9b_targeted.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-t9-final2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t9_final.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-finalize",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_finalize.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-cov-init",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core\\.agent\\_agent_cov_init.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-cov-baseline",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core\\.agent\\_agent_cov_baseline.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-measure",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core\\.agent\\_agent_cov_measure.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-inspect",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core\\.agent\\_agent_cov_inspect.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-inspect2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core\\.agent\\_agent_cov_inspect2.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-unit",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_unit.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-unit2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_unit.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-remeasure",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_remeasure.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-teeth",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_teeth.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-final",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_final.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-fix-bom",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; Set-Location 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core'; $utf8Bom = New-Object System.Text.UTF8Encoding $true; $files = Get-ChildItem ./src -Recurse -File -Filter *.ps1; foreach ($f in $files) { $b = [IO.File]::ReadAllBytes($f.FullName); $hasBom = ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF); $text = if ($hasBom) { [Text.Encoding]::UTF8.GetString($b,3,$b.Length-3) } else { [Text.Encoding]::UTF8.GetString($b) }; if ([regex]::IsMatch($text,'[^\\x00-\\x7F]') -and -not $hasBom) { [IO.File]::WriteAllText($f.FullName,$text,$utf8Bom); Write-Output ('FIXED ' + $f.Name) } }; $schema='src/Public/Test-PSDrawIODiagramSchema.ps1'; $sb=[IO.File]::ReadAllBytes($schema); Write-Output ('schema head=' + (($sb[0..2]|ForEach-Object{ '{0:X2}' -f $_ }) -join ' ')); Import-Module PSScriptAnalyzer; $all=@(Invoke-ScriptAnalyzer -Path ./src -Recurse -Severity Error,Warning); if($all){$all|ForEach-Object{Write-Output ($_.ScriptName+' '+$_.RuleName+' '+$_.Message)}; exit 1}; Write-Output 'SRC_ANALYZER_CLEAN'\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-cov-wrap",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cov_wrap.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-cov-export-diff",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Set-Location 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core'; git diff -- src/Public/Export-PSDrawIODiagram.ps1; Write-Output '---'; git diff -- src/Public/Test-PSDrawIODiagramSchema.ps1; Write-Output '---STATUS---'; git status --short; Write-Output '---EXEC---'; Test-Path .agent/EXECUTION.md; (Get-Item .agent/EXECUTION.md).Length\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-cov-restore-export",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Set-Location 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core'; git checkout -- -- src/Public/Export-PSDrawIODiagram.ps1; git status --short; git diff --stat; Write-Output '---'; Select-String -Path src/Public/Export-PSDrawIODiagram.ps1 -Pattern 'Export directory does not exist' | ForEach-Object { $_.Line.Trim() }\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-cov-restore-export2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -Command \"Set-Location 'C:\\__Code\\___PS.DrawIO\\PS.DrawIO.Core'; git checkout -- src/Public/Export-PSDrawIODiagram.ps1; git status --short; git diff --stat\"",
+			"group": "build"
+		},
+		{
+			"label": "agent-records-verify",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_records_verify.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-records-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_records_finish.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-gap-check",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_gap_check.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-read-lives",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_read_lives.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-task5-complete",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_task5_complete.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-status-now",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_status_now.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-final-report",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_final_report.ps1'",
+			"group": "build"
+		}
+	]
+}

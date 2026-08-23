@@ -9,8 +9,10 @@ $manifestPath = Join-Path $root 'src/PS.DrawIO.Core.psd1'
 $packagePath = Join-Path $root 'dist/PS.DrawIO.Core'
 
 . (Join-Path $PSScriptRoot 'Test-PSDrawIOHooksPath.ps1')
+. (Join-Path $PSScriptRoot 'Test-PSDrawIOExecutionRecords.ps1')
 . (Join-Path $PSScriptRoot 'Assert-PSDrawIOPesterContainers.ps1')
 Test-PSDrawIOHooksPath -Root $root
+Test-PSDrawIOExecutionRecords -Root $root
 
 if ($Task -in 'All', 'Clean') {
     if (Test-Path $packagePath) { Remove-Item $packagePath -Recurse -Force }
