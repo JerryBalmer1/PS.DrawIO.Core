@@ -140,11 +140,26 @@ function ConvertTo-PSDrawIODiagramXml {
     $applyAttrBag = {
         param([System.Xml.XmlElement]$el, $bag)
         if ($null -eq $bag) { return }
-        foreach ($p in @($bag.PSObject.Properties)) {
-            if ($null -eq $p.Name -or [string]::IsNullOrWhiteSpace([string]$p.Name)) { continue }
+        # Deterministic order: sort by name so golden text comparison is stable.
+        $props = @($bag.PSObject.Properties) |
+            Where-Object { $null -ne $_.Name -and -not [string]::IsNullOrWhiteSpace([string]$_.Name) } |
+            Sort-Object -Property Name -CaseSensitive
+        foreach ($p in $props) {
             if ($el.HasAttribute($p.Name)) { continue }
             $null = $el.SetAttribute([string]$p.Name, [string]$p.Value)
         }
+    }
+
+    $hasPreservedAttrs = {
+        param($meta)
+        if ($null -eq $meta) { return $false }
+        if ($null -ne $meta.PSObject.Properties['XmlAttributes'] -and $null -ne $meta.XmlAttributes) {
+            if (@($meta.XmlAttributes.PSObject.Properties).Count -gt 0) { return $true }
+        }
+        if ($null -ne $meta.PSObject.Properties['UserObjectAttributes'] -and $null -ne $meta.UserObjectAttributes) {
+            if (@($meta.UserObjectAttributes.PSObject.Properties).Count -gt 0) { return $true }
+        }
+        return $false
     }
 
     $doc = [System.Xml.XmlDocument]::new()
@@ -252,27 +267,39 @@ function ConvertTo-PSDrawIODiagramXml {
 
         $style = & $buildStyle $n
         $link = & $resolveLink $n
+        $meta = $null
+        if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata) {
+            $meta = $n.Metadata
+        }
+        $wrap = ($link -or (& $hasPreservedAttrs $meta))
 
         $cell = $doc.CreateElement('mxCell')
         $null = $cell.SetAttribute('id', $id)
-        $null = $cell.SetAttribute('value', $label)
+        if (-not $wrap) {
+            # Bare mxCell carries the label as value. UserObject wrappers use label= instead.
+            $null = $cell.SetAttribute('value', $label)
+        }
         $null = $cell.SetAttribute('style', $style)
         $null = $cell.SetAttribute('vertex', '1')
         $null = $cell.SetAttribute('parent', $parent)
         & $appendGeometry $cell $n
 
-        if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata -and
-            $null -ne $n.Metadata.PSObject.Properties['XmlAttributes'] -and $null -ne $n.Metadata.XmlAttributes) {
-            & $applyAttrBag $cell $n.Metadata.XmlAttributes
-        }
-
-        if ($link) {
+        if ($wrap) {
+            # ADR 0006 Option A: link and/or preserved attrs live on UserObject with required id.
+            # Nested mxCell keeps its own id (schema permits; uniqueness tests assert mxCell ids).
             $uo = $doc.CreateElement('UserObject')
+            $null = $uo.SetAttribute('id', $id)
             $null = $uo.SetAttribute('label', $label)
-            $null = $uo.SetAttribute('link', $link)
-            if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata -and
-                $null -ne $n.Metadata.PSObject.Properties['UserObjectAttributes'] -and $null -ne $n.Metadata.UserObjectAttributes) {
-                & $applyAttrBag $uo $n.Metadata.UserObjectAttributes
+            if ($link) {
+                $null = $uo.SetAttribute('link', $link)
+            }
+            if ($null -ne $meta) {
+                if ($null -ne $meta.PSObject.Properties['XmlAttributes'] -and $null -ne $meta.XmlAttributes) {
+                    & $applyAttrBag $uo $meta.XmlAttributes
+                }
+                if ($null -ne $meta.PSObject.Properties['UserObjectAttributes'] -and $null -ne $meta.UserObjectAttributes) {
+                    & $applyAttrBag $uo $meta.UserObjectAttributes
+                }
             }
             $null = $uo.AppendChild($cell)
             $null = $root.AppendChild($uo)
@@ -312,27 +339,52 @@ function ConvertTo-PSDrawIODiagramXml {
         }
 
         $value = ''
-        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata -and
-            $null -ne $e.Metadata.PSObject.Properties['Value']) {
-            $value = [string]$e.Metadata.Value
+        $eMeta = $null
+        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata) {
+            $eMeta = $e.Metadata
+            if ($null -ne $eMeta.PSObject.Properties['Value']) {
+                $value = [string]$eMeta.Value
+            }
         }
+        $eLink = $null
+        if ($null -ne $e.PSObject.Properties['Link'] -and -not [string]::IsNullOrWhiteSpace([string]$e.Link)) {
+            $eLink = [string]$e.Link
+        }
+        $eWrap = ($eLink -or (& $hasPreservedAttrs $eMeta))
 
         $cell = $doc.CreateElement('mxCell')
         $null = $cell.SetAttribute('id', $eid)
-        $null = $cell.SetAttribute('value', $value)
+        if (-not $eWrap) {
+            $null = $cell.SetAttribute('value', $value)
+        }
         $null = $cell.SetAttribute('style', $style)
         $null = $cell.SetAttribute('edge', '1')
         $null = $cell.SetAttribute('parent', $parent)
         $null = $cell.SetAttribute('source', [string]$e.From)
         $null = $cell.SetAttribute('target', [string]$e.To)
-
-        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata -and
-            $null -ne $e.Metadata.PSObject.Properties['XmlAttributes'] -and $null -ne $e.Metadata.XmlAttributes) {
-            & $applyAttrBag $cell $e.Metadata.XmlAttributes
-        }
-
         & $appendGeometry $cell $e -EdgeRelative
-        $null = $root.AppendChild($cell)
+
+        if ($eWrap) {
+            $uo = $doc.CreateElement('UserObject')
+            $null = $uo.SetAttribute('id', $eid)
+            $null = $uo.SetAttribute('label', $value)
+            if ($eLink) {
+                $null = $uo.SetAttribute('link', $eLink)
+            }
+            if ($null -ne $eMeta) {
+                if ($null -ne $eMeta.PSObject.Properties['XmlAttributes'] -and $null -ne $eMeta.XmlAttributes) {
+                    & $applyAttrBag $uo $eMeta.XmlAttributes
+                }
+                if ($null -ne $eMeta.PSObject.Properties['UserObjectAttributes'] -and $null -ne $eMeta.UserObjectAttributes) {
+                    & $applyAttrBag $uo $eMeta.UserObjectAttributes
+                }
+            }
+            $null = $uo.AppendChild($cell)
+            $null = $root.AppendChild($uo)
+        }
+        else {
+            $null = $root.AppendChild($cell)
+        }
         $edgeIndex++
     }
 

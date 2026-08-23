@@ -9,7 +9,8 @@
         'ConvertTo-PSDrawIOIR',
         'Invoke-PSDrawIOLayout',
         'Export-PSDrawIODiagram',
-        'Import-PSDrawIODiagram'
+        'Import-PSDrawIODiagram',
+        'Test-PSDrawIODiagramSchema'
     )
     PrivateData       = @{
         PSData = @{

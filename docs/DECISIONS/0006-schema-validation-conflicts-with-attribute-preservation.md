@@ -1,7 +1,7 @@
 # ADR 0006: Schema validation conflicts with attribute preservation
 
 ## Status
-Open (no decision made)
+Accepted
 
 ## Context
 CORE.md §8 states two Correctness gates that both apply to every emission:
@@ -53,8 +53,31 @@ Drop, narrow, or rewrite one or both §8 gates and the matching §9 checkboxes.
 
 **Cost:** Spec change. Touches CORE.md (out of band for implementation agents without explicit approval). May re-open acceptance labels and golden expectations. Does not by itself fix emission or validation code.
 
+## Decision
+**Option A** is accepted.
+
+- A cell carrying preserved unknown attributes, **or** a link, is wrapped in
+  `UserObject`. The `UserObject` carries `id` and the custom attributes (and
+  `link` / `label` when present). The nested `mxCell` keeps its own `id` as
+  well — the schema permits dual id, and several tests assert on `mxCell` ids.
+- Cells with neither a link nor preserved attributes stay a bare `mxCell`.
+  Do not wrap everything.
+- **Option B rejected:** relaxing the schema weakens a gate CORE.md calls
+  non-negotiable.
+- **Option C rejected:** exempting diagrams from validation creates an
+  unvalidated emission path — the same mechanism rejected in
+  Provider.PowerShell ADR 0004.
+- **Option D not needed.** CORE.md was right; the emitter was wrong.
+
 ## Consequences
-Whichever option is chosen later, these CORE.md §9 checkboxes are in the blast radius (by label):
+- The emitted format changes for any cell with a link or preserved attributes,
+  so the golden corpus must be regenerated for those fixtures.
+- Import must read attributes from `UserObject` as well as from bare `mxCell`,
+  and normalise both into the same IR shape (`Metadata.XmlAttributes`), or
+  `parse → emit → parse` breaks.
+- This reshape is a **prerequisite** for schema validation, which remains a
+  separate slice (do not implement XSD validation in the reshape change).
+- CORE.md §9 labels still in the blast radius once validation lands:
 
 **Correctness gates**
 - Every emission is validated against `mxfile.xsd` in-process via `XmlSchemaSet`
@@ -64,13 +87,11 @@ Whichever option is chosen later, these CORE.md §9 checkboxes are in the blast 
 - Unknown attributes encountered on read are preserved and re-emitted
 - A golden-file corpus exists and a change to any golden file fails the suite
 
-**Emission** (format / identity side effects of A, or of any emit change driven by the gate)
+**Emission**
 - `Export-PSDrawIODiagram` writes a `.drawio` file from an IR
 - Cell ids are unique within a diagram
-- Applies a declared `LinkTemplate` to the emitted `UserObject` (Contract consumption; UserObject shape and `id` placement)
+- Applies a declared `LinkTemplate` to the emitted `UserObject`
 
-**Proof / Quality** (indirect if emit or gate behaviour changes)
+**Proof / Quality**
 - Renders `PS.DrawIO.Provider.PowerShell`'s graph of itself, end to end, to a file that opens in draw.io
 - Pester 5 green on Windows and Linux — PowerShell 7+
-
-No option is selected here. Status remains **Open**.

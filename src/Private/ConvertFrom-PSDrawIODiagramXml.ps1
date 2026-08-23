@@ -90,33 +90,71 @@ function ConvertFrom-PSDrawIODiagramXml {
         return [pscustomobject]$bag
     }
 
-    $cells = [System.Collections.Generic.List[System.Xml.XmlElement]]::new()
+    # Known UserObject attrs that are not preserved custom metadata.
+    $knownUo = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@('label', 'link', 'id'),
+        [StringComparer]::OrdinalIgnoreCase
+    )
+
+    $cells = [System.Collections.Generic.List[object]]::new()
     foreach ($n in @($root.ChildNodes)) {
         if ($n -isnot [System.Xml.XmlElement]) { continue }
         if ($n.LocalName -eq 'mxCell') {
-            $cells.Add($n)
+            $cells.Add([pscustomobject]@{
+                    Cell      = $n
+                    Link      = $null
+                    UoLabel   = $null
+                    UoId      = $null
+                    UoCustoms = $null
+                })
         }
         elseif ($n.LocalName -eq 'UserObject' -or $n.LocalName -eq 'object') {
+            $uoLink = if ($n.HasAttribute('link')) { [string]$n.GetAttribute('link') } else { $null }
+            $uoLabel = if ($n.HasAttribute('label')) { [string]$n.GetAttribute('label') } else { $null }
+            $uoId = if ($n.HasAttribute('id')) { [string]$n.GetAttribute('id') } else { $null }
+            # Custom attrs on the wrapper normalize to the same XmlAttributes bag as bare-mxCell customs.
+            $uoCustoms = & $readAttrs $n $knownUo
             foreach ($c in @($n.ChildNodes)) {
                 if ($c -is [System.Xml.XmlElement] -and $c.LocalName -eq 'mxCell') {
-                    # Attach wrapper for link/label resolution.
-                    $c.SetAttribute('__uoLink', [string]$n.GetAttribute('link'))
-                    $c.SetAttribute('__uoLabel', [string]$n.GetAttribute('label'))
-                    $uoExtra = & $readAttrs $n ([System.Collections.Generic.HashSet[string]]::new(
-                            [string[]]@('label', 'link', 'id'),
-                            [StringComparer]::OrdinalIgnoreCase
-                        ))
-                    $c.SetAttribute('__uoExtraJson', ($uoExtra | ConvertTo-Json -Compress -Depth 5))
-                    $cells.Add($c)
+                    $cells.Add([pscustomobject]@{
+                            Cell      = $c
+                            Link      = $uoLink
+                            UoLabel   = $uoLabel
+                            UoId      = $uoId
+                            UoCustoms = $uoCustoms
+                        })
                 }
             }
         }
     }
 
+    $mergeAttrBags = {
+        param($primary, $secondary)
+        $bag = [ordered]@{}
+        foreach ($src in @($primary, $secondary)) {
+            if ($null -eq $src) { continue }
+            # Deterministic: sort property names when merging.
+            $props = @($src.PSObject.Properties) |
+                Where-Object { $null -ne $_.Name -and -not [string]::IsNullOrWhiteSpace([string]$_.Name) } |
+                Sort-Object -Property Name -CaseSensitive
+            foreach ($p in $props) {
+                if (-not $bag.Contains($p.Name)) {
+                    $bag[$p.Name] = $p.Value
+                }
+            }
+        }
+        if ($bag.Count -eq 0) { return $null }
+        return [pscustomobject]$bag
+    }
+
     $has0 = $false
     $has1 = $false
-    foreach ($c in $cells) {
+    foreach ($entry in $cells) {
+        $c = $entry.Cell
         $cid = [string]$c.GetAttribute('id')
+        if ([string]::IsNullOrWhiteSpace($cid) -and -not [string]::IsNullOrWhiteSpace([string]$entry.UoId)) {
+            $cid = [string]$entry.UoId
+        }
         if ($cid -eq '0') { $has0 = $true }
         if ($cid -eq '1') { $has1 = $true }
     }
@@ -129,8 +167,13 @@ function ConvertFrom-PSDrawIODiagramXml {
     $edges = [System.Collections.Generic.List[object]]::new()
     $defaultStyle = 'whiteSpace=wrap;html=1;'
 
-    foreach ($c in $cells) {
+    foreach ($entry in $cells) {
+        $c = $entry.Cell
         $cid = [string]$c.GetAttribute('id')
+        # Promote wrapper id when nested mxCell omits id (schema dual-id optional).
+        if ([string]::IsNullOrWhiteSpace($cid) -and -not [string]::IsNullOrWhiteSpace([string]$entry.UoId)) {
+            $cid = [string]$entry.UoId
+        }
         if ($cid -eq '0' -or $cid -eq '1') { continue }
 
         $isEdge = ([string]$c.GetAttribute('edge') -eq '1')
@@ -153,37 +196,42 @@ function ConvertFrom-PSDrawIODiagramXml {
             if ($geo.HasAttribute('relative')) { $relative = $geo.GetAttribute('relative') }
         }
 
-        $extra = & $readAttrs $c $knownCell
-        # Strip import-only markers from unknown bag if present.
-        foreach ($marker in @('__uoLink', '__uoLabel', '__uoExtraJson')) {
-            if ($null -ne $extra.PSObject.Properties[$marker]) {
-                $extra.PSObject.Properties.Remove($marker)
-            }
-        }
+        # Bare-mxCell customs and UserObject customs normalize to one XmlAttributes bag.
+        $cellExtra = & $readAttrs $c $knownCell
+        $extra = & $mergeAttrBags $entry.UoCustoms $cellExtra
 
         if ($isEdge) {
             $style = if ($c.HasAttribute('style')) { [string]$c.GetAttribute('style') } else { $null }
             $value = if ($c.HasAttribute('value')) { [string]$c.GetAttribute('value') } else { '' }
+            if (-not [string]::IsNullOrWhiteSpace([string]$entry.UoLabel)) {
+                $value = [string]$entry.UoLabel
+            }
             $parent = if ($c.HasAttribute('parent')) { [string]$c.GetAttribute('parent') } else { '1' }
             $meta = [ordered]@{}
-            if (@($extra.PSObject.Properties).Count -gt 0) {
+            if ($null -ne $extra) {
                 $meta['XmlAttributes'] = $extra
             }
             if ($parent -ne '1') { $meta['Parent'] = $parent }
             if ($null -ne $relative) { $meta['GeometryRelative'] = $relative }
-            if ($c.HasAttribute('value')) { $meta['Value'] = $value }
+            if ($c.HasAttribute('value') -or -not [string]::IsNullOrWhiteSpace([string]$entry.UoLabel)) {
+                $meta['Value'] = $value
+            }
 
-            $edges.Add([pscustomobject][ordered]@{
-                    PSTypeName    = 'PS.DrawIO.IR.Edge'
-                    Id            = $cid
-                    From          = [string]$c.GetAttribute('source')
-                    To            = [string]$c.GetAttribute('target')
-                    Type          = ''
-                    Style         = $style
-                    ResolvedStyle = $style
-                    Aggregates    = $null
-                    Metadata      = [pscustomobject]$meta
-                })
+            $edgeObj = [ordered]@{
+                PSTypeName    = 'PS.DrawIO.IR.Edge'
+                Id            = $cid
+                From          = [string]$c.GetAttribute('source')
+                To            = [string]$c.GetAttribute('target')
+                Type          = ''
+                Style         = $style
+                ResolvedStyle = $style
+                Aggregates    = $null
+                Metadata      = [pscustomobject]$meta
+            }
+            if (-not [string]::IsNullOrWhiteSpace([string]$entry.Link)) {
+                $edgeObj['Link'] = [string]$entry.Link
+            }
+            $edges.Add([pscustomobject]$edgeObj)
             continue
         }
 
@@ -191,11 +239,11 @@ function ConvertFrom-PSDrawIODiagramXml {
 
         $label = [string]$c.GetAttribute('value')
         $link = $null
-        if ($c.HasAttribute('__uoLink') -and -not [string]::IsNullOrWhiteSpace([string]$c.GetAttribute('__uoLink'))) {
-            $link = [string]$c.GetAttribute('__uoLink')
+        if (-not [string]::IsNullOrWhiteSpace([string]$entry.Link)) {
+            $link = [string]$entry.Link
         }
-        if ($c.HasAttribute('__uoLabel') -and -not [string]::IsNullOrWhiteSpace([string]$c.GetAttribute('__uoLabel'))) {
-            $label = [string]$c.GetAttribute('__uoLabel')
+        if (-not [string]::IsNullOrWhiteSpace([string]$entry.UoLabel)) {
+            $label = [string]$entry.UoLabel
         }
 
         $style = if ($c.HasAttribute('style')) {
@@ -211,23 +259,8 @@ function ConvertFrom-PSDrawIODiagramXml {
         $isGroup = ($style -match '(?i)(^|;)\s*group\s*(;|$)')
 
         $meta = [ordered]@{}
-        if (@($extra.PSObject.Properties).Count -gt 0) {
+        if ($null -ne $extra) {
             $meta['XmlAttributes'] = $extra
-        }
-        if ($c.HasAttribute('__uoExtraJson') -and -not [string]::IsNullOrWhiteSpace([string]$c.GetAttribute('__uoExtraJson'))) {
-            try {
-                $uoBag = [string]$c.GetAttribute('__uoExtraJson') | ConvertFrom-Json
-                if ($uoBag -and @($uoBag.PSObject.Properties).Count -gt 0) {
-                    $meta['UserObjectAttributes'] = $uoBag
-                }
-            }
-            catch {
-                # __uoExtraJson is an import-only marker this function stamps via ConvertTo-Json
-                # on UserObject wrappers in the same pass. It is not user diagram XML (LoadXml
-                # already threw for malformed input). If ConvertFrom-Json fails, omit optional
-                # UserObjectAttributes and continue the import rather than failing the diagram.
-                $uoBag = $null
-            }
         }
 
         $nodes.Add([pscustomobject][ordered]@{

@@ -7,7 +7,9 @@
     Builds draw.io XML via the DOM (no string-concatenated markup) and saves it
     to -Path. Geometry is taken from the IR; run Invoke-PSDrawIOLayout first.
     XML comments are never emitted. Root cells id 0 and id 1 parent=0 are always
-    present.
+    present. Every emission is validated against the vendored mxfile.xsd
+    (Test-PSDrawIODiagramSchema) before the file is written; schema failure is
+    terminating and leaves no file on disk.
 
     .PARAMETER IR
     Intermediate representation (typically after Invoke-PSDrawIOLayout).
@@ -46,6 +48,8 @@
         if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Path is required.' }
 
         $xmlText = ConvertTo-PSDrawIODiagramXml -IR $IR
+        # Hard gate (CORE.md): validate before any write. Failure must not leave a file.
+        $null = Test-PSDrawIODiagramSchema -Content $xmlText
 
         if ($PSCmdlet.ShouldProcess($Path, 'Export draw.io diagram')) {
             $full = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)

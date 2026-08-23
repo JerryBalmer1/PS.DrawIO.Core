@@ -464,6 +464,9 @@ Describe 'PS.DrawIO.Core IR unit' {
         $text = Get-Content -LiteralPath $path -Raw
         $text | Should -Match '<UserObject'
         $text | Should -Match 'link="vscode://file/demo.ps1:10"'
+        # Schema: required id is on UserObject; nested mxCell may also carry id (dual-id).
+        $text | Should -Match 'UserObject[^>]*\bid="'
+        $text | Should -Match '<mxCell[^>]*\bid="'
     }
 
     It 'Export rejects malformed IR naming the missing node' {
@@ -551,7 +554,7 @@ Describe 'PS.DrawIO.Core IR unit' {
         $ir.Edges[0].Id | Should -Be 'e0'
     }
 
-    It 'Import preserves customAttr and Export re-emits it' {
+    It 'Import preserves customAttr and Export re-emits it on UserObject (ADR 0006 Option A)' {
         $xml = @'
 <?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net" agent="accept-test"><diagram id="u" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="u1" value="X" style="whiteSpace=wrap;" vertex="1" parent="1" customAttr="keep-me"><mxGeometry x="10" y="10" width="40" height="20" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
 '@
@@ -561,8 +564,39 @@ Describe 'PS.DrawIO.Core IR unit' {
         $ir.Nodes[0].Metadata.XmlAttributes.customAttr | Should -Be 'keep-me'
         $out = Join-Path $TestDrive 'unit-import-custom-out.drawio'
         Export-PSDrawIODiagram -IR $ir -Path $out | Out-Null
-        (Get-Content -LiteralPath $out -Raw) | Should -Match 'customAttr="keep-me"'
-        (Get-Content -LiteralPath $out -Raw) | Should -Match 'agent="accept-test"'
+        $text = Get-Content -LiteralPath $out -Raw
+        $text | Should -Match 'customAttr="keep-me"'
+        $text | Should -Match 'agent="accept-test"'
+        # Option A: preserved attrs live on UserObject with required id, not bare mxCell.
+        $text | Should -Match '<UserObject[^>]*\bid="u1"'
+        $text | Should -Match '<UserObject[^>]*customAttr="keep-me"'
+        $text | Should -Not -Match '<mxCell[^>]*customAttr='
+    }
+
+    It 'Export leaves bare mxCell when node has neither link nor preserved attrs' {
+        # IR.LinkTemplate also forces wrap via resolveLink — strip it and per-node links/attrs.
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        if ($null -ne $ir.PSObject.Properties['LinkTemplate']) {
+            $ir.PSObject.Properties.Remove('LinkTemplate')
+        }
+        foreach ($n in @($ir.Nodes)) {
+            if ($null -ne $n.PSObject.Properties['Link']) {
+                $n.PSObject.Properties.Remove('Link')
+            }
+            if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata) {
+                if ($null -ne $n.Metadata.PSObject.Properties['XmlAttributes']) {
+                    $n.Metadata.PSObject.Properties.Remove('XmlAttributes')
+                }
+                if ($null -ne $n.Metadata.PSObject.Properties['UserObjectAttributes']) {
+                    $n.Metadata.PSObject.Properties.Remove('UserObjectAttributes')
+                }
+            }
+        }
+        $path = Join-Path $TestDrive 'unit-bare-no-wrap.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $text = Get-Content -LiteralPath $path -Raw
+        $text | Should -Not -Match '<UserObject' -Because 'no link and no preserved attrs must stay bare mxCell'
+        $text | Should -Match '<mxCell[^>]*vertex="1"'
     }
 
     It 'Import throws naming the file on malformed XML' {
@@ -622,6 +656,65 @@ Describe 'PS.DrawIO.Core IR unit' {
         $out = Join-Path $TestDrive 'unit-bare-out.drawio'
         { Export-PSDrawIODiagram -IR $ir -Path $out -ErrorAction Stop } | Should -Not -Throw
         (Get-Content -LiteralPath $out -Raw) | Should -Match 'id="hand-1"'
+    }
+
+    It 'valid IR emission validates against mxfile.xsd' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-schema-valid.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        Test-PSDrawIODiagramSchema -Content $xml | Should -BeTrue
+    }
+
+    It 'missing structural mxCell id 0 fails schema validation naming the violation' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="1" parent="0" /><mxCell id="n1" value="X" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="1" y="1" width="10" height="10" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        try {
+            Test-PSDrawIODiagramSchema -Content $xml -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match '\bschema\b'
+            $_.Exception.Message | Should -Match 'id="0"|id=.0.|structural|root'
+        }
+    }
+
+    It 'UserObject with customAttr validates against mxfile.xsd' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><UserObject id="u1" label="X" customAttr="keep-me" link="vscode://file/demo.ps1:1"><mxCell id="u1" style="whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="40" height="20" as="geometry" /></mxCell></UserObject></root></mxGraphModel></diagram></mxfile>
+'@
+        Test-PSDrawIODiagramSchema -Content $xml | Should -BeTrue
+    }
+
+    It 'vendored mxfile.xsd SHA256 matches ADR 0005 pin' {
+        $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+        $xsd = Join-Path $root 'src/Schema/mxfile.xsd'
+        Test-Path -LiteralPath $xsd | Should -BeTrue -Because 'src/Schema/mxfile.xsd must be vendored'
+        $hash = (Get-FileHash -LiteralPath $xsd -Algorithm SHA256).Hash.ToLowerInvariant()
+        # Pin: docs/DECISIONS/0005-vendoring-the-mxfile-schema.md
+        $hash | Should -Be '905db85d4e8ebec0e91518cdd62982e0afb3f09ebdcaf9e6b1952957a606639a'
+    }
+
+    It 'schema resolves from packaged module ModuleBase' {
+        $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+        $build = Join-Path $root 'build/build.ps1'
+        & $build -Task Package | Out-Null
+        $distManifest = Join-Path $root 'dist/PS.DrawIO.Core/PS.DrawIO.Core.psd1'
+        Test-Path -LiteralPath $distManifest | Should -BeTrue -Because 'Package must produce dist/PS.DrawIO.Core'
+        $distXsd = Join-Path $root 'dist/PS.DrawIO.Core/Schema/mxfile.xsd'
+        Test-Path -LiteralPath $distXsd | Should -BeTrue -Because 'Package must include Schema/mxfile.xsd'
+        Remove-Module PS.DrawIO.Core -Force -ErrorAction SilentlyContinue
+        Import-Module $distManifest -Force
+        $mod = Get-Module PS.DrawIO.Core
+        $resolved = Join-Path $mod.ModuleBase 'Schema/mxfile.xsd'
+        Test-Path -LiteralPath $resolved | Should -BeTrue
+        $minimal = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="p" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>
+'@
+        Test-PSDrawIODiagramSchema -Content $minimal | Should -BeTrue
+        Remove-Module PS.DrawIO.Core -Force -ErrorAction SilentlyContinue
+        Import-Module (Join-Path $root 'src/PS.DrawIO.Core.psd1') -Force
     }
 }
 
