@@ -1,4 +1,17 @@
-{
+﻿{
   "Commit": "",
-  "Items": []
+  "Items": [
+    {
+      "Label": "Renders `PS.DrawIO.Provider.PowerShell`'s graph of itself, end to end, to a file that opens in draw.io",
+      "Signed": false,
+      "Signer": "",
+      "Date": ""
+    },
+    {
+      "Label": "Pester 5 green on Windows and Linux — PowerShell 7+",
+      "Signed": false,
+      "Signer": "",
+      "Date": ""
+    }
+  ]
 }
