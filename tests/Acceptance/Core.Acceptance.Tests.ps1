@@ -224,13 +224,45 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     # Contract consumption
     # -------------------------------------------------------------------------
 
-    It (Get-Label 'Resolves a semantic type') -Tag Acceptance {
+    It (Get-Label 'Resolves each semantic type through an injected resolver') -Tag Acceptance {
+        # Seam only (ADR 0004): Core accepts an injected resolver and applies
+        # whatever declaration is returned. No live registry; no invented style.
         Assert-CoreModuleAvailable
+
+        $convert = Get-Command -Name ConvertTo-PSDrawIOIR -ErrorAction Stop
+        $convert.Parameters.Keys | Should -Contain 'Resolver' -Because 'ConvertTo-PSDrawIOIR must accept an injected resolver'
+
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
-        $ir | Should -Not -BeNullOrEmpty
-        $styled = @($ir.Nodes | Where-Object { $_.Style -or $_.ResolvedStyle -or $_.ShapeStyle })
-        $styled.Count | Should -BeGreaterThan 0 -Because 'Core must resolve semantic types through Registry and apply returned style'
+        $knownStyle = 'rounded=1;whiteSpace=wrap;html=1;'
+        $resolverWithStyle = {
+            param($Provider, $Type)
+            [pscustomobject]@{
+                Style        = $knownStyle
+                LinkTemplate = 'vscode://file/{path}:{line}'
+            }
+        }
+        $irStyled = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -Resolver $resolverWithStyle
+        $irStyled | Should -Not -BeNullOrEmpty
+        $styled = @($irStyled.Nodes | Where-Object {
+                ($null -ne $_.PSObject.Properties['Style'] -and [string]$_.Style -eq $knownStyle) -or
+                ($null -ne $_.PSObject.Properties['ResolvedStyle'] -and [string]$_.ResolvedStyle -eq $knownStyle) -or
+                ($null -ne $_.PSObject.Properties['ShapeStyle'] -and [string]$_.ShapeStyle -eq $knownStyle)
+            })
+        $styled.Count | Should -BeGreaterThan 0 -Because 'declaration content returned by the resolver must appear on the IR node'
+
+        $resolverNoStyle = {
+            param($Provider, $Type)
+            [pscustomobject]@{
+                LinkTemplate = 'vscode://file/{path}:{line}'
+            }
+        }
+        $irBare = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -Resolver $resolverNoStyle
+        $invented = @($irBare.Nodes | Where-Object {
+                ($null -ne $_.PSObject.Properties['Style'] -and -not [string]::IsNullOrWhiteSpace([string]$_.Style)) -or
+                ($null -ne $_.PSObject.Properties['ResolvedStyle'] -and -not [string]::IsNullOrWhiteSpace([string]$_.ResolvedStyle)) -or
+                ($null -ne $_.PSObject.Properties['ShapeStyle'] -and -not [string]::IsNullOrWhiteSpace([string]$_.ShapeStyle))
+            })
+        $invented | Should -BeNullOrEmpty -Because 'a declaration with no Style must not produce an invented style, and that is not an error'
     }
 
     It (Get-Label 'Fails loudly when a semantic type') -Tag Acceptance {

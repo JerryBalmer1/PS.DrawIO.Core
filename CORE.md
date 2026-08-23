@@ -245,7 +245,7 @@ A checked-in corpus of inputs and expected object trees (and/or canonical XML) p
 > is not required for v1. Editing a checkbox edits the test suite.
 
 ### Contract consumption
-- [ ] Resolves a semantic type through `PS.DrawIO.Registry` and applies the returned style
+- [ ] Resolves each semantic type through an injected resolver and applies whatever declaration is returned
 - [ ] Fails loudly when a semantic type is not registered, naming the type and provider
 - [ ] Applies a declared `LinkTemplate` to the emitted `UserObject`
 - [ ] Reads `LayoutHints` and passes them to the layout strategy without interpreting geometry
