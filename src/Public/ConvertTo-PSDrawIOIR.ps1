@@ -1,4 +1,4 @@
-﻿function ConvertTo-PSDrawIOIR {
+function ConvertTo-PSDrawIOIR {
     <#
     .SYNOPSIS
     Converts a provider graph into Core's intermediate representation.
@@ -8,23 +8,37 @@
     Node Ids are Provider:Type:Name (ADR 0001). Caller supplies -Provider (ADR 0003).
     Edges whose From or To name a node absent from the IR are rejected.
 
+    Optional -Resolver is an injected seam (ADR 0004). Core never loads
+    PS.DrawIO.Registry. Invoked as & $Resolver $Provider $Type; returns a
+    declaration (Style, LinkTemplate, ...) or throw/null. Null or throw is a
+    terminating error naming type and provider. Omitting -Resolver skips
+    resolution and invents no style.
+
     .PARAMETER Graph
     Provider graph with Nodes and Edges. Optional Provider must match -Provider if set.
 
     .PARAMETER Provider
     Owning provider name. Mandatory. Rule: ^[A-Z][A-Za-z0-9]+$ (no Registry dependency).
 
+    .PARAMETER Resolver
+    Optional scriptblock: param($Provider, $Type) -> declaration or throw/null.
+
     .EXAMPLE
     $graph = [pscustomobject]@{
         Nodes = @(
-            [pscustomobject]@{ Id = 'PowerShell:Function:Get-Foo'; Type = 'Function'; Name = 'Get-Foo'; Label = 'Get-Foo' }
-            [pscustomobject]@{ Id = 'PowerShell:Function:Set-Foo'; Type = 'Function'; Name = 'Set-Foo'; Label = 'Set-Foo' }
+            [pscustomobject]@{ Type = 'Widget'; Name = 'Get-Foo'; Label = 'Get-Foo' }
+            [pscustomobject]@{ Type = 'Widget'; Name = 'Set-Foo'; Label = 'Set-Foo' }
         )
         Edges = @(
-            [pscustomobject]@{ From = 'PowerShell:Function:Get-Foo'; To = 'PowerShell:Function:Set-Foo'; Type = 'Internal' }
+            [pscustomobject]@{ From = 'Demo:Widget:Get-Foo'; To = 'Demo:Widget:Set-Foo'; Type = 'Link' }
         )
     }
-    ConvertTo-PSDrawIOIR -Graph $graph -Provider PowerShell
+    $resolver = {
+        param($Provider, $Type)
+        [pscustomobject]@{ Style = 'rounded=1;whiteSpace=wrap;html=1;' }
+    }
+    $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo -Resolver $resolver
+    $ir.Nodes[0].Style
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject])]
@@ -33,7 +47,10 @@
         [object] $Graph,
 
         [Parameter(Mandatory)]
-        [string] $Provider
+        [string] $Provider,
+
+        [Parameter()]
+        [scriptblock] $Resolver
     )
 
     process {
@@ -48,30 +65,7 @@
             }
         }
 
-        $nodeIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-        $irNodes = [System.Collections.Generic.List[object]]::new()
-
-        foreach ($node in @($Graph.Nodes)) {
-            $id = Resolve-PSDrawIOQualifiedId -Node $node -Provider $Provider
-            if (-not $nodeIds.Add($id)) { throw "Duplicate IR node Id '$id'." }
-            $irNodes.Add((ConvertTo-PSDrawIOIRNode -Node $node -Provider $Provider -Id $id))
-        }
-
-        $irEdges = [System.Collections.Generic.List[object]]::new()
-        $index = 0
-        foreach ($edge in @($Graph.Edges)) {
-            $irEdge = ConvertTo-PSDrawIOIREdge -Edge $edge -Index $index
-            if (-not $nodeIds.Contains($irEdge.From)) {
-                throw ("IR edge rejected: From='{0}' names a node absent from the IR (offending edge Id='{1}', Type='{2}', To='{3}')." -f `
-                        $irEdge.From, $irEdge.Id, $irEdge.Type, $irEdge.To)
-            }
-            if (-not $nodeIds.Contains($irEdge.To)) {
-                throw ("IR edge rejected: To='{0}' names a node absent from the IR (offending edge Id='{1}', Type='{2}', From='{3}')." -f `
-                        $irEdge.To, $irEdge.Id, $irEdge.Type, $irEdge.From)
-            }
-            $irEdges.Add($irEdge)
-            $index++
-        }
+        $members = ConvertTo-PSDrawIOIRContent -Graph $Graph -Provider $Provider -Resolver $Resolver
 
         $layoutHints = @()
         if ($null -ne $Graph.PSObject.Properties['LayoutHints'] -and $null -ne $Graph.LayoutHints) {
@@ -86,8 +80,8 @@
         return [pscustomobject]@{
             PSTypeName   = 'PS.DrawIO.IR'
             Provider     = $Provider
-            Nodes        = @($irNodes.ToArray())
-            Edges        = @($irEdges.ToArray())
+            Nodes        = $members.Nodes
+            Edges        = $members.Edges
             LayoutHints  = $layoutHints
             LinkTemplate = $linkTemplate
         }

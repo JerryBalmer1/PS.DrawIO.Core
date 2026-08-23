@@ -180,6 +180,114 @@ Describe 'PS.DrawIO.Core IR unit' {
         $attr.Mandatory | Should -BeTrue
     }
 
+    It 'Resolver parameter is optional (not Mandatory)' {
+        $p = (Get-Command ConvertTo-PSDrawIOIR).Parameters['Resolver']
+        $p | Should -Not -BeNullOrEmpty
+        $attr = $p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+        @($attr | Where-Object { $_.Mandatory }).Count | Should -Be 0
+    }
+
+    It 'applies Style from injected resolver exactly' {
+        $knownStyle = 'rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;'
+        $resolver = {
+            param($Provider, $Type)
+            [pscustomobject]@{ Style = $knownStyle }
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo -Resolver $resolver
+        $ir.Nodes[0].Style | Should -Be $knownStyle
+        $ir.Nodes[0].ResolvedStyle | Should -Be $knownStyle
+        $ir.Nodes[1].Style | Should -Be $knownStyle
+    }
+
+    It 'applies LinkTemplate from injected resolver exactly' {
+        $knownLink = 'vscode://file/{Path}:{Line}'
+        $resolver = {
+            param($Provider, $Type)
+            [pscustomobject]@{ LinkTemplate = $knownLink }
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo -Resolver $resolver
+        $ir.Nodes[0].LinkTemplate | Should -Be $knownLink
+        $null -eq $ir.Nodes[0].PSObject.Properties['Style'] -or [string]::IsNullOrWhiteSpace([string]$ir.Nodes[0].Style) | Should -BeTrue
+    }
+
+    It 'does not invent Style when declaration has only LinkTemplate' {
+        $resolver = {
+            param($Provider, $Type)
+            [pscustomobject]@{ LinkTemplate = 'vscode://file/{Path}:{Line}' }
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo -Resolver $resolver
+        foreach ($n in $ir.Nodes) {
+            $hasStyle = ($null -ne $n.PSObject.Properties['Style'] -and -not [string]::IsNullOrWhiteSpace([string]$n.Style)) -or
+                ($null -ne $n.PSObject.Properties['ResolvedStyle'] -and -not [string]::IsNullOrWhiteSpace([string]$n.ResolvedStyle)) -or
+                ($null -ne $n.PSObject.Properties['ShapeStyle'] -and -not [string]::IsNullOrWhiteSpace([string]$n.ShapeStyle))
+            $hasStyle | Should -BeFalse -Because $n.Id
+        }
+    }
+
+    It 'throws naming type and provider when resolver throws' {
+        $resolver = {
+            param($Provider, $Type)
+            throw "not found: $Type"
+        }
+        try {
+            ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo -Resolver $resolver -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Widget'
+            $_.Exception.Message | Should -Match 'Demo'
+        }
+    }
+
+    It 'throws naming type and provider when resolver returns null' {
+        $resolver = {
+            param($Provider, $Type)
+            $null
+        }
+        try {
+            ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo -Resolver $resolver -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Widget'
+            $_.Exception.Message | Should -Match 'Demo'
+            $_.Exception.Message | Should -Match 'not registered|null|not found'
+        }
+    }
+
+    It 'omitting -Resolver converts successfully with no style applied' {
+        $ir = ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo
+        $ir.Nodes.Count | Should -Be 2
+        foreach ($n in $ir.Nodes) {
+            $hasStyle = ($null -ne $n.PSObject.Properties['Style'] -and -not [string]::IsNullOrWhiteSpace([string]$n.Style)) -or
+                ($null -ne $n.PSObject.Properties['ResolvedStyle'] -and -not [string]::IsNullOrWhiteSpace([string]$n.ResolvedStyle))
+            $hasStyle | Should -BeFalse -Because $n.Id
+        }
+    }
+
+    It 'throws when Graph is null' {
+        { ConvertTo-PSDrawIOIR -Graph $null -Provider Demo -ErrorAction Stop } | Should -Throw
+        try {
+            ConvertTo-PSDrawIOIR -Graph $null -Provider Demo -ErrorAction Stop
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Graph'
+        }
+    }
+
+    It 'converts a graph with no LayoutHints or LinkTemplate' {
+        $graph = [pscustomobject]@{
+            Nodes = @(
+                [pscustomobject]@{ Type = 'Widget'; Name = 'Solo'; Label = 'Solo' }
+            )
+            Edges = @()
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo
+        $ir.Nodes.Count | Should -Be 1
+        @($ir.LayoutHints).Count | Should -Be 0
+        $null -eq $ir.LinkTemplate | Should -BeTrue
+    }
+
     It 'requires -IR on Invoke-PSDrawIOLayout' {
         $p = (Get-Command Invoke-PSDrawIOLayout).Parameters['IR']
         $attr = $p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
