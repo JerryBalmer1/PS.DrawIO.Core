@@ -330,6 +330,108 @@
 			"type": "shell",
 			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_final_report.ps1'",
 			"group": "build"
+		},
+		{
+			"label": "agent-ir-sample",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_ir_sample.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-verify",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_verify.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-ir-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_finish.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-archive2",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_archive2.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-cleanup-final",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_cleanup_final.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-rm-live",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_rm_live.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-t0",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t0.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-verify",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_verify.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-ir-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_finish.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-write-exec",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_write_exec.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-rm-inventory",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_inventory.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-rm-records",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_rm_records.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-rm-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_rm_finish.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-t0",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_t0.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-write-exec",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_write_exec.ps1'",
+			"group": "build"
+		},
+		{
+			"label": "agent-ir-verify",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_verify.ps1'",
+			"group": "test"
+		},
+		{
+			"label": "agent-ir-finish",
+			"type": "shell",
+			"command": "& 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' -NoProfile -NonInteractive -File '.agent/_agent_finish.ps1'",
+			"group": "build"
 		}
 	]
 }

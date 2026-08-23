@@ -50,16 +50,3 @@ Attempt 2: <only if attempt 1 failed>
 
 ## For the next agent
 <working tree state, what is done, what is not, what to do next>
-
-## Archive (end of task only)
-
-When every plan box is ticked or explicitly marked blocked, archive before reporting:
-
-```powershell
-$stamp = Get-Date -Format 'yyyy-MM-dd-HH-mm-ss'
-Move-Item .agent/EXECUTION.md ".agent/EXECUTION_RECORDS/$stamp-EXECUTION.md"
-```
-
-`HH` is 24-hour, `mm` is minutes, `MM` is months. Swapping them sorts wrongly
-and is silently useless. Never edit, rename, or delete an existing record.
-Archive only a finished log — mid-task archive is a record of nothing.
