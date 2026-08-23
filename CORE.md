@@ -65,9 +65,11 @@ Core ADR 0001 qualifies node Ids (`Provider:Type:Name`) as a **cheap hedge** aga
 
 Providers speak domain graphs (for example `PSModuleGraph`). Core speaks an IR that is already diagram-shaped: every node and edge carries what emission needs after registry resolution.
 
+Field-level detail lives in [`docs/IR-SCHEMA.md`](docs/IR-SCHEMA.md). This section is the contract summary; if the two disagree, the code and `IR-SCHEMA.md` win and this section is corrected.
+
 ### Node Ids
 
-Every IR node Id is **provider-qualified** per Core ADR 0001:
+Ids **Core materializes** (via `ConvertTo-PSDrawIOIR` / `Resolve-PSDrawIOQualifiedId`) are **provider-qualified** per Core ADR 0001:
 
 ```
 Provider:Type:Name
@@ -79,7 +81,9 @@ Example: `PowerShell:Function:Get-Thing` — not `Function:Get-Thing`.
 - `Type` — semantic type key used with `Resolve-PSDrawIOShape -Type`
 - `Name` — provider-local identity string
 
-Providers may keep internal Ids; Core normalizes at the boundary it owns. Qualification costs nothing on the single-provider path and is nearly impossible to retrofit once golden files, links, and cell ids depend on bare Ids.
+Providers may keep internal Ids; Core normalizes at the convert boundary it owns. Qualification costs nothing on the single-provider path and is nearly impossible to retrofit once golden files, links, and cell ids depend on bare Ids.
+
+**Import is different.** `ConvertFrom-PSDrawIODiagramXml` preserves cell ids as found. Bare ids such as `hand-1` stay bare; Core does **not** force `Provider:Type:Name` on read. ADR 0001 governs ids Core generates, not every id Core may hold after import. Emission does not reject unqualified ids on re-emit.
 
 ### What an IR node carries
 
@@ -87,11 +91,11 @@ Concrete fields the IR needs that a raw provider graph does not always have:
 
 | Concern | Role |
 |---|---|
-| `Id` | Provider-qualified stable key |
-| `Provider` / `Type` / `Name` | Split form of the Id for resolution and diagnostics |
+| `Id` | Stable key — provider-qualified when Core materializes; may be bare after import |
+| `Provider` / `Type` / `Name` | Split form when known (set on convert; `$null` on import) |
 | `Label` | Display text (becomes cell `value`, XML-escaped when HTML) |
-| `ResolvedStyle` | Style string after registry resolve + theme |
-| `Geometry` | `x`, `y`, `width`, `height` — owned by Core after layout |
+| `Style` / `ResolvedStyle` | Opaque style strings. With an injected resolver, declaration `Style` is copied to both `Style` and `ResolvedStyle`. **No theme pass mutates IR style today** (a theme stage remains intended in §6 but is not implemented). Absent until resolve runs. |
+| `X`, `Y`, `Width`, `Height` | Flat doubles owned by Core after layout. **Absent until layout runs** — convert does not invent them; an acceptance test asserts that absence and it is load-bearing. Layout writes these note properties in place; it does **not** write a nested `Geometry` object. Emission accepts either flat fields or a nested `Geometry` with the same names (defensive read for hand-built IR). |
 | `ParentId` | Group / swimlane parent when nested; child coordinates are **relative to the parent**, not the canvas |
 | `Link` | Optional URL or `vscode://` target injected via `UserObject` / `object` |
 | `Metadata` | Opaque extras preserved for round-trip and custom properties |
@@ -102,17 +106,18 @@ Concrete fields the IR needs that a raw provider graph does not always have:
 | Concern | Role |
 |---|---|
 | `Id` | Stable edge identity within the diagram |
-| `From` / `To` | Endpoint node Ids (qualified), never bare display names |
-| `Type` | Semantic edge kind resolved through the registry when styled |
-| `ResolvedStyle` | Edge stroke / arrow style after resolve + theme |
-| `Waypoints` / routing data | Owned by Core after the route pass |
+| `From` / `To` | Endpoint **node Ids** present in the same IR — never bare display names. Qualification is not itself the requirement; both ends must resolve to a node in the IR node set. After import, ends may be bare when node ids are bare. |
+| `Type` | Semantic edge kind; may receive `Style` / `ResolvedStyle` when a resolver is supplied |
+| `Style` / `ResolvedStyle` | Opaque stroke / arrow style after resolve when a resolver ran; same copy rule as nodes. No theme pass today. |
 | `Aggregates` | Optional call-count or extent summary carried from the provider graph |
+
+**Waypoints / routing data are not implemented in v1.** There is no route pass and no waypoint fields on the IR. Emit writes edge geometry as `mxGeometry relative="1"` only.
 
 The IR is plain PowerShell data at module boundaries (`PSCustomObject` + `PSTypeName`). PS classes stay internal.
 
 ### Closed input, closed output
 
-Provider graphs that feed Core are expected to be **closed**: every edge endpoint names a node Id present in that graph (placeholders for external / unresolved ends are the provider's job). Core does not silently drop edges with missing ends; it fails the contract at the boundary.
+Provider graphs that feed Core are expected to be **closed**: every edge endpoint names a node Id present in that graph (placeholders for external / unresolved ends are the provider's job). Core does not silently drop edges with missing ends; it fails the contract at the boundary (`ConvertTo-PSDrawIOIR` and again at emit). The rule is membership in the node set, not the shape of the Id string.
 
 ---
 
