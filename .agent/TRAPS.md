@@ -135,3 +135,25 @@ output is dropped.
 
 **Fix:** Exclude rules explicitly when you need them not to run; do not assume
 severity alone skips rule execution.
+
+### T-012 — Acceptance It passes while only asserting half of its checkbox label
+
+**Symptom:** An acceptance test is green even though a component named in the
+checkbox label does not exist yet. Example: "Reads LayoutHints and passes them
+to the layout strategy without interpreting geometry" passed with no layout
+strategy in the module — the body only required non-empty `IR.LayoutHints` and
+conditionally required `Invoke-PSDrawIOLayout` if convert had already stamped
+geometry.
+
+**Cause:** The label bundles two (or more) claims with "and", or names a
+component that does not exist yet. The second claim is untestable until that
+component exists, so the assertion body silently covers only the first half.
+Green means "the asserted half holds," not "the full checkbox is done." This is
+the eighth cannot-fail-shaped finding in this project: a check that cannot
+fail for the reason its name implies.
+
+**Fix:** When a checkbox label contains "and" or names a component that does
+not exist yet, state in `EXECUTION.md` which half is actually asserted. A label
+that overclaims is a **spec defect**, not a test defect — do not weaken the
+test to match the label, and do not treat a green It as proof of the untested
+half.
