@@ -21,6 +21,7 @@ Run: <timestamp> | Repo: <name>
 Task: <one line>
 
 ## Plan
+Boxes are ticked as each step completes, not at the end. This file is the only thing a replacement agent has if this one dies.
 - [ ] T1 <task>
 - [ ] T2 <task>
 

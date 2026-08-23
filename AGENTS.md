@@ -184,6 +184,8 @@ Clear `.agent/EXECUTION.md` and write its Plan section before the first command.
 6. Read each reference file once.
 7. Never edit `TRAPS.md` to make a task pass.
 8. End every task with the verification block.
+9. Write the outcome of each plan step into `.agent/EXECUTION.md` BEFORE starting the next step. Tick the box, record the result in one line, and record the cause if it failed. A log written at the end is a log lost to a context blowout or a killed process.
+10. Every task begins by ticking the first box and ends with every box ticked or explicitly marked blocked. A plan with unticked boxes and no Blocked entry means the log was not maintained.
 
 ### Feasibility pass
 
