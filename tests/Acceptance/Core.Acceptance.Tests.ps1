@@ -261,16 +261,33 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         $graph = Get-AcceptanceProviderGraph
         $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $ir.LayoutHints | Should -Not -BeNullOrEmpty -Because 'LayoutHints must be carried into IR for the layout strategy'
-        # Geometry must not be interpreted during convert — no coordinates stamped yet
-        # unless a layout strategy has been invoked explicitly.
+
+        # Convert must not interpret geometry — coordinates belong to the layout pass only.
         $preLayoutWithGeometry = @($ir.Nodes | Where-Object {
-                $null -ne $_.X -or $null -ne $_.Y -or $null -ne $_.Width -or $null -ne $_.Height
+                ($null -ne $_.PSObject.Properties['X'] -and $null -ne $_.X) -or
+                ($null -ne $_.PSObject.Properties['Y'] -and $null -ne $_.Y) -or
+                ($null -ne $_.PSObject.Properties['Width'] -and $null -ne $_.Width) -or
+                ($null -ne $_.PSObject.Properties['Height'] -and $null -ne $_.Height)
             })
-        if ($preLayoutWithGeometry.Count -gt 0) {
-            # If convert already laid out, that is only acceptable when done via strategy seam.
-            Get-Command -Name 'Invoke-PSDrawIOLayout' -ErrorAction SilentlyContinue |
-                Should -Not -BeNullOrEmpty -Because 'geometry assignment must go through the layout strategy seam'
-        }
+        $preLayoutWithGeometry | Should -BeNullOrEmpty -Because 'convert must not stamp geometry; layout strategy owns coordinates'
+
+        # Prove LayoutHints are handed to the layout strategy (not merely present on IR).
+        $layoutCmd = Get-Command -Name 'Invoke-PSDrawIOLayout' -ErrorAction SilentlyContinue
+        $layoutCmd | Should -Not -BeNullOrEmpty -Because 'LayoutHints hand-off requires the named layout strategy seam'
+        $hintBox = [pscustomobject]@{ Received = $null }
+        $spy = {
+            param($IR)
+            $hintBox.Received = @($IR.LayoutHints)
+            foreach ($n in @($IR.Nodes)) {
+                $n | Add-Member -NotePropertyName X -NotePropertyValue 1 -Force
+                $n | Add-Member -NotePropertyName Y -NotePropertyValue 1 -Force
+                $n | Add-Member -NotePropertyName Width -NotePropertyValue 10 -Force
+                $n | Add-Member -NotePropertyName Height -NotePropertyValue 10 -Force
+            }
+            $IR
+        }.GetNewClosure()
+        $null = Invoke-PSDrawIOLayout -IR $ir -Strategy $spy
+        $hintBox.Received | Should -Not -BeNullOrEmpty -Because 'layout strategy must receive LayoutHints from the IR'
     }
 
     It (Get-Label 'No provider vocabulary') -Tag Acceptance {
@@ -588,33 +605,18 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
 
     It (Get-Label 'fails schema validation') -Tag Acceptance {
         Assert-CoreModuleAvailable
-        # Prefer a public validation seam if exported; otherwise force Export to validate.
+        # Schema-failure naming is a distinct seam. Do not substitute IR identity rejection (T-015).
         $validator = Get-Command -Name 'Test-PSDrawIODiagramSchema' -ErrorAction SilentlyContinue
-        if ($validator) {
-            { Test-PSDrawIODiagramSchema -Content '<not-valid-mxfile/>' -ErrorAction Stop } |
-                Should -Throw
-            try {
-                Test-PSDrawIODiagramSchema -Content '<not-valid-mxfile/>' -ErrorAction Stop
-            }
-            catch {
-                $_.Exception.Message | Should -Match 'schema|invalid|violation|mxfile'
-            }
+        $validator | Should -Not -BeNullOrEmpty -Because 'schema-failure naming requires Test-PSDrawIODiagramSchema; do not substitute IR identity rejection'
+        { Test-PSDrawIODiagramSchema -Content '<not-valid-mxfile/>' -ErrorAction Stop } |
+            Should -Throw
+        try {
+            Test-PSDrawIODiagramSchema -Content '<not-valid-mxfile/>' -ErrorAction Stop
         }
-        else {
-            # Export path must throw on schema-invalid IR materialization.
-            $badIr = [PSCustomObject]@{
-                PSTypeName = 'PS.DrawIO.IR'
-                Nodes      = @([PSCustomObject]@{ Id = 'bad'; Type = 'Nope' })
-                Edges      = @()
-            }
-            $path = Join-Path $TestDrive 'schema-fail.drawio'
-            { Export-PSDrawIODiagram -IR $badIr -Path $path -ErrorAction Stop } | Should -Throw
-            try {
-                Export-PSDrawIODiagram -IR $badIr -Path $path -ErrorAction Stop
-            }
-            catch {
-                $_.Exception.Message | Should -Match 'schema|invalid|violation|mxfile|node'
-            }
+        catch {
+            # \bschema\b — checkbox language; rejects IR identity noise (invalid/node/mxfile).
+            # Prefer over XmlSchema: that is a .NET type name, not the user-facing contract word.
+            $_.Exception.Message | Should -Match '\bschema\b'
         }
     }
 
@@ -791,7 +793,8 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
             Export-PSDrawIODiagram -IR $bad -Path (Join-Path $TestDrive 'malformed.drawio') -ErrorAction Stop
         }
         catch {
-            $_.Exception.Message | Should -Match 'MissingNode|PowerShell:PSFunction:MissingNode|offending|node'
+            # Fixture-specific identity only — bare 'node' matched unrelated IR errors (T-015).
+            $_.Exception.Message | Should -Match 'MissingNode|PowerShell:PSFunction:MissingNode|offending'
         }
     }
 
