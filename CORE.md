@@ -266,6 +266,7 @@ A checked-in corpus of inputs and expected object trees (and/or canonical XML) p
    │   └── SIGNOFF.json                 manual sign-off record
    ├── build/
    │   └── build.ps1                    clean → analyze → test → package
+   ├── .agent/                          agent protocol (TRAPS.md; EXECUTION.md gitignored)
    ├── DoNotModify/                     ◄── OFF LIMITS. See AGENTS.md.
    ├── AGENTS.md
    ├── README.md

@@ -43,6 +43,7 @@ When you notice something worth doing that's out of scope, write it in `docs/DEC
    tests/        Pester 5               Unit/ Integration/ Acceptance/ Fixtures/
    docs/         written docs           DECISIONS/, COMPOSITION-SIGNALS.md, SIGNOFF.json
    build/        build.ps1
+   .agent/       agent protocol         TRAPS.md, EXECUTION.template.md (EXECUTION.md gitignored)
    DoNotModify/  ◄── OFF LIMITS
 ```
 
@@ -166,6 +167,34 @@ Import-Module ./src/PS.DrawIO.Core.psd1 -Force
 Test throws before Package, so any failing test blocks the default artifact. Precedent: PS.DrawIO.Provider.PowerShell ADR 0004.
 
 Always verify in a **fresh session with no other PS.DrawIO modules loaded** unless the task explicitly requires Registry.
+
+---
+
+## Execution protocol
+
+Before executing anything: read `.agent/TRAPS.md` once.
+Clear `.agent/EXECUTION.md` and write its Plan section before the first command.
+(Structure: `.agent/EXECUTION.template.md`. `EXECUTION.md` is gitignored.)
+
+1. Never send multi-line PowerShell to an interactive terminal. Write a `.ps1` and run `pwsh -NoProfile -File <path>`.
+2. Two attempts maximum per task. On the second failure, record it under Blocked and move on. Never a third.
+3. A stuck terminal is replaced, never repaired. Two consecutive empty returns means the shell is dead.
+4. When an attempt fails, check `TRAPS.md` before forming a hypothesis. If the symptom is not there and it cost time, append it.
+5. Run the test suite twice per task: baseline and final. No check-ins between.
+6. Read each reference file once.
+7. Never edit `TRAPS.md` to make a task pass.
+8. End every task with the verification block.
+
+Verification block — run these four, paste raw output into `EXECUTION.md`:
+
+```powershell
+git status --short
+git diff --stat
+git log --oneline -1
+Get-ChildItem <every file you claim to have created> | Select-Object Name, Length, LastWriteTime
+```
+
+The fourth command exists to catch a claim that a file was created when no file changed.
 
 ---
 
