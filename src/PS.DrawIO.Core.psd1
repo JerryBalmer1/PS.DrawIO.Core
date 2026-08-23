@@ -6,7 +6,8 @@
     Description       = 'Serialization, layout, and XML emission for the PS.DrawIO ecosystem.'
     PowerShellVersion = '7.0'
     FunctionsToExport = @(
-        'ConvertTo-PSDrawIOIR'
+        'ConvertTo-PSDrawIOIR',
+        'Invoke-PSDrawIOLayout'
     )
     PrivateData       = @{
         PSData = @{
