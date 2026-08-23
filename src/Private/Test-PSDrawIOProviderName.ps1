@@ -1,4 +1,4 @@
-function Test-PSDrawIOProviderName {
+﻿function Test-PSDrawIOProviderName {
     <#
     .SYNOPSIS
     Validates a provider name against the ecosystem naming rule.

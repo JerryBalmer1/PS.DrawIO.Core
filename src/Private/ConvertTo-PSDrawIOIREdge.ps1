@@ -1,4 +1,4 @@
-function ConvertTo-PSDrawIOIREdge {
+﻿function ConvertTo-PSDrawIOIREdge {
     <#
     .SYNOPSIS
     Maps one provider graph edge into a boundary-safe IR edge PSCustomObject.

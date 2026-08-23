@@ -1,4 +1,4 @@
-function ConvertTo-PSDrawIOIRNode {
+﻿function ConvertTo-PSDrawIOIRNode {
     <#
     .SYNOPSIS
     Maps one provider graph node into a boundary-safe IR node PSCustomObject.

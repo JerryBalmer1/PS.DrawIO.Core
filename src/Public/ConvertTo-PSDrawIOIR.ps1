@@ -1,4 +1,4 @@
-function ConvertTo-PSDrawIOIR {
+﻿function ConvertTo-PSDrawIOIR {
     <#
     .SYNOPSIS
     Converts a provider graph into Core's intermediate representation.

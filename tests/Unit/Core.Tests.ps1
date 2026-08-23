@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 Describe 'PS.DrawIO.Core IR unit' {
     BeforeAll {
         $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -298,6 +298,120 @@ Describe 'PS.DrawIO.Core IR unit' {
             $null -ne $v.X | Should -BeTrue
             $null -ne $v.Y | Should -BeTrue
         }
+    }
+
+    It 'Export-PSDrawIODiagram writes a non-empty .drawio file' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-export.drawio'
+        $returned = Export-PSDrawIODiagram -IR $ir -Path $path
+        Test-Path -LiteralPath $path | Should -BeTrue
+        (Get-Item -LiteralPath $path).Length | Should -BeGreaterThan 0
+        $returned | Should -Be $path
+        $text = Get-Content -LiteralPath $path -Raw
+        $text | Should -Match '<mxfile\b'
+        $text | Should -Match '<mxGraphModel\b'
+        $text | Should -Match '<mxCell\s+id="0"\s*/>'
+        $text | Should -Match '<mxCell\s+id="1"[^>]*parent="0"'
+    }
+
+    It 'Export emits unique mxCell ids and exclusive vertex/edge flags' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-cells.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $doc = [xml](Get-Content -LiteralPath $path -Raw)
+        $cells = @($doc.SelectNodes('//mxCell'))
+        $ids = @($cells | ForEach-Object { $_.id })
+        ($ids | Select-Object -Unique).Count | Should -Be $ids.Count
+        @($cells | Where-Object { $_.vertex -eq '1' -and $_.edge -eq '1' }) | Should -BeNullOrEmpty
+        @($cells | Where-Object { $_.vertex -eq '1' }).Count | Should -Be 2
+        @($cells | Where-Object { $_.edge -eq '1' }).Count | Should -Be 1
+    }
+
+    It 'Export XML-escapes HTML in value attributes' {
+        $graph = New-UnitProviderGraph
+        $graph.Nodes[0].Label = '<b>Get-Item</b>'
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-html.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $text = Get-Content -LiteralPath $path -Raw
+        $text | Should -Not -Match 'value="[^"]*<b>'
+        $text | Should -Match '&lt;b&gt;'
+    }
+
+    It 'Export emits perimeter= for non-rectangular Shape metadata' {
+        $graph = New-UnitProviderGraph
+        $graph.Nodes[0] | Add-Member -NotePropertyName Shape -NotePropertyValue 'ellipse' -Force
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-perimeter.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        (Get-Content -LiteralPath $path -Raw) | Should -Match 'perimeter=ellipsePerimeter'
+    }
+
+    It 'Export emits UserObject link when node.Link is set' {
+        $graph = New-UnitProviderGraph
+        $graph.Nodes[0] | Add-Member -NotePropertyName Link -NotePropertyValue 'vscode://file/demo.ps1:10' -Force
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-link.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $text = Get-Content -LiteralPath $path -Raw
+        $text | Should -Match '<UserObject'
+        $text | Should -Match 'link="vscode://file/demo.ps1:10"'
+    }
+
+    It 'Export rejects malformed IR naming the missing node' {
+        $bad = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Nodes      = @(
+                [pscustomobject]@{ Id = 'Demo:Widget:Good'; Type = 'Widget'; Name = 'Good' }
+            )
+            Edges      = @(
+                [pscustomobject]@{
+                    From = 'Demo:Widget:Good'
+                    To   = 'Demo:Widget:Missing-Target'
+                    Type = 'DependsOn'
+                }
+            )
+        }
+        $path = Join-Path $TestDrive 'unit-malformed.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $bad -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Demo:Widget:Missing-Target'
+            $_.Exception.Message | Should -Match 'absent|rejected|offending|node'
+        }
+        Test-Path -LiteralPath $path | Should -BeFalse
+    }
+
+    It 'Export -WhatIf does not write a file' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-whatif.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path -WhatIf
+        Test-Path -LiteralPath $path | Should -BeFalse
+    }
+
+    It 'requires -IR and -Path on Export-PSDrawIODiagram' {
+        $cmd = Get-Command Export-PSDrawIODiagram
+        foreach ($name in @('IR', 'Path')) {
+            $p = $cmd.Parameters[$name]
+            $attr = $p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+            $attr.Mandatory | Should -BeTrue -Because "$name must be mandatory"
+        }
+    }
+
+    It 'Export emits vertex geometry from laid-out IR coordinates' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-geo.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $doc = [xml](Get-Content -LiteralPath $path -Raw)
+        $v = @($doc.SelectNodes('//mxCell[@vertex="1"]'))
+        $v.Count | Should -Be 2
+        [double]$v[0].mxGeometry.x | Should -Be 40
+        [double]$v[0].mxGeometry.y | Should -Be 40
+        [double]$v[0].mxGeometry.width | Should -Be 120
+        [double]$v[0].mxGeometry.height | Should -Be 40
+        [double]$v[1].mxGeometry.x | Should -Be 200
     }
 }
 

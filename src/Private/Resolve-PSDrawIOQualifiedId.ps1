@@ -1,4 +1,4 @@
-function Resolve-PSDrawIOQualifiedId {
+﻿function Resolve-PSDrawIOQualifiedId {
     <#
     .SYNOPSIS
     Ensures a node identity is provider-qualified as Provider:Type:Name.

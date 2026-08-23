@@ -1,4 +1,4 @@
-$moduleRoot = Split-Path -Parent $PSCommandPath
+﻿$moduleRoot = Split-Path -Parent $PSCommandPath
 
 foreach ($folder in @('Classes', 'Private', 'Public')) {
     $path = Join-Path $moduleRoot $folder
@@ -11,5 +11,6 @@ foreach ($folder in @('Classes', 'Private', 'Public')) {
 
 Export-ModuleMember -Function @(
     'ConvertTo-PSDrawIOIR',
-    'Invoke-PSDrawIOLayout'
+    'Invoke-PSDrawIOLayout',
+    'Export-PSDrawIODiagram'
 )
