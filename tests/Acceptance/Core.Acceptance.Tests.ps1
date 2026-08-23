@@ -265,27 +265,54 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         $invented | Should -BeNullOrEmpty -Because 'a declaration with no Style must not produce an invented style, and that is not an error'
     }
 
-    It (Get-Label 'Fails loudly when a semantic type') -Tag Acceptance {
+    It (Get-Label 'A resolver failure surfaces as a terminating error') -Tag Acceptance {
+        # Seam only (ADR 0004): Core surfaces resolver throw/null as a terminating
+        # error naming type and provider. No live registry; no registration check.
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $graph.Nodes[0].Type = 'DefinitelyNotRegisteredTypeZZZ'
-        { ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -ErrorAction Stop } |
-            Should -Throw -Because 'unregistered semantic types must fail loudly'
+        $typeName = [string]$graph.Nodes[0].Type
+        $providerName = [string]$graph.Provider
+
+        $throwingResolver = {
+            param($Provider, $Type)
+            throw "resolver double refused type $Type"
+        }
+        { ConvertTo-PSDrawIOIR -Graph $graph -Provider $providerName -Resolver $throwingResolver -ErrorAction Stop } |
+            Should -Throw -Because 'a resolver that throws must surface as a terminating error'
         try {
-            ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -ErrorAction Stop
+            ConvertTo-PSDrawIOIR -Graph $graph -Provider $providerName -Resolver $throwingResolver -ErrorAction Stop
         }
         catch {
-            $_.Exception.Message | Should -Match 'DefinitelyNotRegisteredTypeZZZ'
-            $_.Exception.Message | Should -Match 'PowerShell'
+            $_.Exception.Message | Should -Match ([regex]::Escape($typeName)) -Because 'throw path must name the type'
+            $_.Exception.Message | Should -Match ([regex]::Escape($providerName)) -Because 'throw path must name the provider'
+        }
+
+        $nullResolver = {
+            param($Provider, $Type)
+            $null
+        }
+        { ConvertTo-PSDrawIOIR -Graph $graph -Provider $providerName -Resolver $nullResolver -ErrorAction Stop } |
+            Should -Throw -Because 'a resolver that returns null must not be silently skipped'
+        try {
+            ConvertTo-PSDrawIOIR -Graph $graph -Provider $providerName -Resolver $nullResolver -ErrorAction Stop
+        }
+        catch {
+            $_.Exception.Message | Should -Match ([regex]::Escape($typeName)) -Because 'null path must name the type'
+            $_.Exception.Message | Should -Match ([regex]::Escape($providerName)) -Because 'null path must name the provider'
         }
     }
 
     It (Get-Label 'LinkTemplate') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
+        $template = [string]$graph.LinkTemplate
+        $template | Should -Not -BeNullOrEmpty -Because 'fixture must supply a LinkTemplate value to assert'
         $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $emitted = Get-EmittedDiagramXml -IR $ir
-        $emitted.Text | Should -Match 'UserObject|link=' -Because 'declared LinkTemplate must appear on emitted UserObject/link surface'
+        $emitted.Text | Should -Match 'UserObject' -Because 'LinkTemplate emission wraps vertices in UserObject'
+        # Emit resolves {Path}/{Line}; assert the fixture template's value survives that path.
+        $expectedLink = $template -replace '\{Path\}', '' -replace '\{Line\}', ''
+        $emitted.Text | Should -Match ([regex]::Escape($expectedLink)) -Because 'emitted link must carry the fixture LinkTemplate value'
     }
 
     It (Get-Label 'LayoutHints') -Tag Acceptance {

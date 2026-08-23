@@ -246,7 +246,7 @@ A checked-in corpus of inputs and expected object trees (and/or canonical XML) p
 
 ### Contract consumption
 - [ ] Resolves each semantic type through an injected resolver and applies whatever declaration is returned
-- [ ] Fails loudly when a semantic type is not registered, naming the type and provider
+- [ ] A resolver failure surfaces as a terminating error naming the type and the provider
 - [ ] Applies a declared `LinkTemplate` to the emitted `UserObject`
 - [ ] Reads `LayoutHints` and passes them to the layout strategy without interpreting geometry
 - [ ] No provider vocabulary is hardcoded in this repository — enforced by a test

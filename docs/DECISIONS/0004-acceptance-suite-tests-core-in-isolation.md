@@ -83,3 +83,30 @@ problem, not a Core acceptance concern.
   the IR boundary is decided; remaining Proof work is Export / layout /
   emission and the eventual adapter caller, not acceptance loading Registry).
 - Acceptance stays free of a runtime dependency on `PS.DrawIO.Registry`.
+
+## Amendment — second boundary checkbox retargeted
+
+The first pass of this ADR rewrote only the style-resolve checkbox to an
+injected-resolver seam. Decision point 4 left the second boundary checkbox
+("Fails loudly when a semantic type is not registered…") as written, on the
+claim that Core's seam could reject unknown types without a live registry
+module.
+
+That claim was wrong in practice. The acceptance body set an unregistered
+type and called `ConvertTo-PSDrawIOIR` **without** `-Resolver`. With an
+optional resolver, no hardcoded provider vocabulary, and no Registry load,
+Core has nothing to check registration against. Omit-resolver success is
+required for other paths. The checkbox was therefore unsatisfiable in this
+suite — the same class of defect as the first boundary checkbox, missed on
+the first pass.
+
+**Retarget applied:** the §9 label and its matching acceptance `It` now assert
+that a **resolver failure** (throw or null return) surfaces as a terminating
+error naming the type and the provider. Satisfiable with resolver doubles.
+No registration, registry, or provider name in the checkbox.
+
+**General rule:** any CORE.md §9 checkbox describing behaviour that depends
+on a registered provider, a live registry, or another repository's content
+cannot be asserted by this acceptance suite and must be rewritten to assert
+the seam Core owns. Two Contract consumption checkboxes have now been found
+and retargeted this way.
