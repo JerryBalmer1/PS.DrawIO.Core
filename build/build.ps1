@@ -16,18 +16,9 @@ if ($Task -in 'All', 'Clean') {
     if (Test-Path $packagePath) { Remove-Item $packagePath -Recurse -Force }
 }
 if ($Task -in 'All', 'Analyze') {
-    # TEMPORARY: remove this missing-src branch the moment src/ lands.
-    # Reason: CI run #2 failed on both runners because Analyze targeted a
-    # non-existent src/ and never reached the intentional meta-test failure.
-    # See docs/DECISIONS/0002-analyze-skips-missing-source.md.
     $srcPath = Join-Path $root 'src'
-    if (-not (Test-Path -LiteralPath $srcPath)) {
-        Write-Warning 'ScriptAnalyzer did NOT run: src/ is absent. This skip is temporary until src/ exists; remove this branch when source lands.'
-    }
-    else {
-        $analysis = @(Invoke-ScriptAnalyzer -Path $srcPath -Recurse -Severity Error, Warning)
-        if ($analysis.Count -gt 0) { $analysis | Format-List; throw 'ScriptAnalyzer reported errors or warnings.' }
-    }
+    $analysis = @(Invoke-ScriptAnalyzer -Path $srcPath -Recurse -Severity Error, Warning)
+    if ($analysis.Count -gt 0) { $analysis | Format-List; throw 'ScriptAnalyzer reported errors or warnings.' }
 }
 if ($Task -in 'All', 'Test') {
     $isCI = [bool]$env:CI -or [bool]$env:TF_BUILD -or [bool]$env:GITHUB_ACTIONS

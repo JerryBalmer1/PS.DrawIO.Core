@@ -71,3 +71,11 @@ the defect rather than any individual repository's circumstances.
 - **Remove this ADR's build branch** in the same change that introduces `src/`.
   Leaving the skip after source exists would recreate the cannot-fail path
   this project has already paid for elsewhere.
+
+## Resolution
+Condition met: first change that creates `src/` (IR implementation; working tree
+on 2026-08-22, not yet committed at write time).
+
+The temporary missing-`src/` branch in `build/build.ps1` was deleted in that
+same change. Analyze again runs `Invoke-ScriptAnalyzer` unconditionally against
+`src/` and throws on any Error or Warning finding. The analyzer gate is live.
