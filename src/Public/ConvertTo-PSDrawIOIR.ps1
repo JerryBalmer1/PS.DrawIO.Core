@@ -5,51 +5,56 @@ function ConvertTo-PSDrawIOIR {
 
     .DESCRIPTION
     Normalizes provider nodes and edges into boundary-safe PSCustomObject IR.
-    Node Ids are provider-qualified as Provider:Type:Name. Edges whose From or
-    To name a node absent from the IR are rejected with a terminating error.
+    Node Ids are Provider:Type:Name (ADR 0001). Caller supplies -Provider (ADR 0003).
+    Edges whose From or To name a node absent from the IR are rejected.
 
     .PARAMETER Graph
-    A provider graph object with Provider, Nodes, and Edges collections.
+    Provider graph with Nodes and Edges. Optional Provider must match -Provider if set.
+
+    .PARAMETER Provider
+    Owning provider name. Mandatory. Rule: ^[A-Z][A-Za-z0-9]+$ (no Registry dependency).
 
     .EXAMPLE
     $graph = [pscustomobject]@{
-        Provider = 'PowerShell'
-        Nodes    = @(
+        Nodes = @(
             [pscustomobject]@{ Id = 'PowerShell:Function:Get-Foo'; Type = 'Function'; Name = 'Get-Foo'; Label = 'Get-Foo' }
             [pscustomobject]@{ Id = 'PowerShell:Function:Set-Foo'; Type = 'Function'; Name = 'Set-Foo'; Label = 'Set-Foo' }
         )
-        Edges    = @(
+        Edges = @(
             [pscustomobject]@{ From = 'PowerShell:Function:Get-Foo'; To = 'PowerShell:Function:Set-Foo'; Type = 'Internal' }
         )
     }
-    ConvertTo-PSDrawIOIR -Graph $graph
+    ConvertTo-PSDrawIOIR -Graph $graph -Provider PowerShell
     #>
     [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
-        [object] $Graph
+        [object] $Graph,
+
+        [Parameter(Mandatory)]
+        [string] $Provider
     )
 
     process {
-        if ($null -eq $Graph) {
-            throw 'Graph is required.'
-        }
+        if ($null -eq $Graph) { throw 'Graph is required.' }
 
-        $provider = [string] $Graph.Provider
-        if ([string]::IsNullOrWhiteSpace($provider)) {
-            throw 'Provider graph must include a non-empty Provider.'
+        Test-PSDrawIOProviderName -Name $Provider
+
+        if ($null -ne $Graph.PSObject.Properties['Provider']) {
+            $graphProvider = [string] $Graph.Provider
+            if (-not [string]::IsNullOrWhiteSpace($graphProvider) -and $graphProvider -cne $Provider) {
+                throw ("Provider mismatch: -Provider is '{0}' but graph.Provider is '{1}'." -f $Provider, $graphProvider)
+            }
         }
 
         $nodeIds = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
         $irNodes = [System.Collections.Generic.List[object]]::new()
 
         foreach ($node in @($Graph.Nodes)) {
-            $id = Resolve-PSDrawIOQualifiedId -Node $node -Provider $provider
-            if (-not $nodeIds.Add($id)) {
-                throw "Duplicate IR node Id '$id'."
-            }
-            $irNodes.Add((ConvertTo-PSDrawIOIRNode -Node $node -Provider $provider -Id $id))
+            $id = Resolve-PSDrawIOQualifiedId -Node $node -Provider $Provider
+            if (-not $nodeIds.Add($id)) { throw "Duplicate IR node Id '$id'." }
+            $irNodes.Add((ConvertTo-PSDrawIOIRNode -Node $node -Provider $Provider -Id $id))
         }
 
         $irEdges = [System.Collections.Generic.List[object]]::new()
@@ -80,7 +85,7 @@ function ConvertTo-PSDrawIOIR {
 
         return [pscustomobject]@{
             PSTypeName   = 'PS.DrawIO.IR'
-            Provider     = $provider
+            Provider     = $Provider
             Nodes        = @($irNodes.ToArray())
             Edges        = @($irEdges.ToArray())
             LayoutHints  = $layoutHints
@@ -88,3 +93,4 @@ function ConvertTo-PSDrawIOIR {
         }
     }
 }
+

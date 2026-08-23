@@ -1,7 +1,7 @@
 # ADR 0003: Provider identity at the IR boundary
 
 ## Status
-Open (no decision made)
+Accepted
 
 ## Context
 Core ADR 0001 requires every IR node Id to be provider-qualified as
@@ -76,17 +76,40 @@ depend on a real PowerShell self-graph stay blocked on a future provider
 deliverable rather than on Core alone. Core's current throw remains correct
 against bare `PSModuleGraph` until then.
 
+## Decision
+**B is the mechanism. C is the eventual caller. A is rejected.**
+
+1. `ConvertTo-PSDrawIOIR` takes a **mandatory** `-Provider` string. That value
+   is the sole source of provider identity used when materializing
+   `Provider:Type:Name` Ids (ADR 0001).
+2. The inbound graph **need not** carry `Provider`. If the graph has a
+   non-empty `Provider` property and it differs from `-Provider`, Core throws
+   a terminating error that names **both** values.
+3. `-Provider` is validated with the same naming rule the registry uses for
+   `ProviderName`: `^[A-Z][A-Za-z0-9]+$` (PascalCase letters and digits, no
+   dots). Core applies this rule **locally** and does **not** take a runtime
+   dependency on `PS.DrawIO.Registry`. The duplication is intentional and
+   accepted.
+4. Option **A is rejected**: the published `PSModuleGraph` shape is not
+   changed by this decision. Providers are not required to emit a top-level
+   `Provider` field for Core IR conversion.
+5. Option **C remains the intended production caller**: a thin adapter (or
+   any orchestrating caller) supplies `-Provider` when feeding a real
+   provider graph into Core. B does not replace C; B is what C (and tests,
+   and any other caller) invokes.
+
 ## Consequences
-Until this ADR is decided (and the chosen option is implemented), the
-following CORE.md §9 **Proof** checkboxes that require a real provider graph
-through Core remain blocked:
-
-- Renders `PS.DrawIO.Provider.PowerShell`'s graph of itself, end to end, to a file that opens in draw.io
-- The rendered file is not a pile at the origin — asserted, not eyeballed
-
-Other Proof items that do not depend on a live `PSModuleGraph` (for example a
-deliberately malformed IR rejected by name) are outside this blockage unless
-they are later wired through the same real-graph path.
-
-Status remains **Open**. This document does not choose A, B, or C and does
-not authorize implementation of any option.
+- Call sites must pass `-Provider` explicitly. Omitting it is a parameter-
+  binding failure.
+- Wrong `-Provider` values still produce plausible wrong Ids if the graph has
+  no `Provider` property to disagree with; call-site discipline remains
+  required. When the graph *does* carry `Provider`, mismatch fails loudly.
+- Naming-rule duplication between Core and Registry is an accepted cost of
+  keeping Core free of a Registry module dependency.
+- CORE.md §9 **Proof** items that need a real provider graph through Core are
+  **no longer blocked by this identity gap**. They remain blocked on missing
+  Export / layout / emission work, not on provider identity at the IR
+  boundary.
+- Acceptance fixtures that still call `ConvertTo-PSDrawIOIR -Graph $graph`
+  without `-Provider` will fail until those callers are updated in a separate
+  change (acceptance is out of scope for the decision implementation).
