@@ -1,6 +1,7 @@
 .agent/EXECUTION.md
 _AgentRequests.md
 _PromptExecutionResults.md
+_agent_*
 dist/
 testResults.xml
 coverage.xml

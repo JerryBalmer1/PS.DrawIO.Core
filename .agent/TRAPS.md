@@ -215,3 +215,28 @@ when `Test-PSDrawIODiagramSchema` is absent.
 subsystem under test, not a list of generic words. If a test has a fallback
 branch for an unimplemented feature, that branch must fail, not substitute a
 weaker assertion.
+
+### T-016 — Incomplete instructions are not a prompt to reconstruct intent
+
+**Symptom:** The instructions received are incomplete — a task list stops
+mid-sentence, or references a step whose text is missing.
+
+**Cause:** The chat input truncated the paste. It is not a signal to infer the
+rest.
+
+**Fix:** Report the exact point where the text stops and stop working. Do not
+reconstruct intent from VS Code's chat database, local files, or prior
+transcripts. A guessed instruction that happens to be right is
+indistinguishable from one that is wrong until it has already been executed.
+
+### T-017 — Cleanup claimed in the log without verified deletion
+
+**Symptom:** An execution log states that temporary files were deleted, and they
+are still present.
+
+**Cause:** The cleanup line was written as part of the report rather than
+executed and verified.
+
+**Fix:** Delete temps, then run `git status --short` and paste the raw output
+into the log as proof. A cleanup claim without that output is a claim, not a
+fact.
