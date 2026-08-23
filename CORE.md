@@ -239,9 +239,81 @@ A checked-in corpus of inputs and expected object trees (and/or canonical XML) p
 
 ## 9. Definition of Done — v1.0.0
 
-> Not yet written. This section drives the acceptance suite; every checkbox
-> requires a matching `It` block and a meta-test enforces it. It is authored
-> by the repository owner, not by an agent.
+> **This section drives the acceptance suite.** Every checkbox needs a matching
+> `It` block in `tests/Acceptance/`, keyed by label text, and a meta-test
+> enforces it. If an item is unchecked, v1 is not done. If it is not listed, it
+> is not required for v1. Editing a checkbox edits the test suite.
+
+### Contract consumption
+- [ ] Resolves a semantic type through `PS.DrawIO.Registry` and applies the returned style
+- [ ] Fails loudly when a semantic type is not registered, naming the type and provider
+- [ ] Applies a declared `LinkTemplate` to the emitted `UserObject`
+- [ ] Reads `LayoutHints` and passes them to the layout strategy without interpreting geometry
+- [ ] No provider vocabulary is hardcoded in this repository — enforced by a test
+
+### Intermediate representation
+- [ ] `ConvertTo-PSDrawIOIR` produces an IR from a provider graph
+- [ ] Every IR node `Id` is provider-qualified as `Provider:Type:Name`
+- [ ] An IR edge whose `From` or `To` names a node absent from the IR is rejected, not dropped
+- [ ] IR crosses module boundaries as `PSCustomObject` with a `PSTypeName`, not a class instance
+- [ ] IR round-trips through JSON to an equivalent object, compared structurally
+
+### Layout
+- [ ] Layout is invoked through a named strategy interface, not a hardcoded call
+- [ ] One built-in strategy ships and assigns coordinates to every vertex
+- [ ] A test double strategy can be substituted, proving the seam is real
+- [ ] Every emitted vertex has non-zero `width` and `height`
+- [ ] No two sibling vertices overlap after layout
+- [ ] Child vertices of a group carry coordinates relative to the parent
+- [ ] Zero geometry constants appear outside the layout pass — enforced by a test
+
+### Emission
+- [ ] `Export-PSDrawIODiagram` writes a `.drawio` file from an IR
+- [ ] Output contains `<mxCell id="0"/>` and `<mxCell id="1" parent="0"/>`
+- [ ] Output is uncompressed XML
+- [ ] Output contains no XML comments — enforced by a test
+- [ ] Cell ids are unique within a diagram
+- [ ] `vertex="1"` and `edge="1"` never appear on the same cell
+- [ ] HTML in a `value` is XML-escaped
+- [ ] A non-rectangular shape emits a matching `perimeter=` value
+
+### Correctness gates
+- [ ] Every emission is validated against `mxfile.xsd` in-process via `XmlSchemaSet`
+- [ ] Emission that fails schema validation throws, naming the violation
+- [ ] `parse → emit → parse` is stable for a file Core wrote
+- [ ] `parse → emit → parse` is stable for a hand-edited file Core did not write
+- [ ] Unknown attributes encountered on read are preserved and re-emitted
+- [ ] A golden-file corpus exists and a change to any golden file fails the suite
+
+### Proof
+- [ ] Renders `PS.DrawIO.Provider.PowerShell`'s graph of itself, end to end, to a file that opens in draw.io
+- [ ] The rendered file is not a pile at the origin — asserted, not eyeballed
+- [ ] A deliberately malformed IR is rejected with a message naming the offending node
+
+### Quality gates
+- [ ] Pester 5 green on Windows and Linux — PowerShell 7+
+- [ ] Coverage ≥ 90% on `src/Public`, ≥ 80% overall
+- [ ] `PSScriptAnalyzer` clean at Error and Warning; suppressions justified inline
+- [ ] `Test-ModuleManifest` passes
+- [ ] Imports clean in a fresh session
+- [ ] No `src/Public` function exceeds 100 lines
+- [ ] All exported names use approved verbs
+
+### Documentation
+- [ ] `README.md` — install → resolve → render in under 20 lines
+- [ ] `docs/IR-SCHEMA.md` — the intermediate representation
+- [ ] `docs/LIMITATIONS.md` — what the built-in layout strategy does not do
+- [ ] `CHANGELOG.md` per Keep a Changelog
+
+### Explicitly NOT in v1
+- ✗ Multi-provider graph composition — see §3 and Registry ADR 0003
+- ✗ The draw.io Desktop CLI layout strategy
+- ✗ The `#create` URL back-end
+- ✗ The `.drawio.ps1` DSL
+- ✗ A theme engine beyond applying declared defaults
+- ✗ A good layout algorithm — v1 ships a defined one, not a pretty one
+- ✗ PSGallery publication
+- ✗ macOS testing
 
 ---
 
