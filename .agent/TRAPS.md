@@ -267,3 +267,18 @@ the symptom is there, cite the trap ID in `EXECUTION.md` and apply the stated
 fix. If you cite the same ID twice in one run, stop and record it under
 Blocked — that is the two-symptom rule, and citing makes it visible rather than
 invisible.
+
+### T-020 — Geometry assertion passes for both relative and absolute coordinates
+
+**Symptom:** A geometry assertion passes whether coordinates are relative or
+absolute.
+
+**Cause:** The assertion checked bounds — non-negative, or within a range —
+rather than a property that differs between the two. Positive absolute
+coordinates satisfy a non-negativity check just as well as small relative
+ones.
+
+**Fix:** Assert a distinguishing property. For parent-relative geometry, place
+the parent at a non-zero origin and assert the child's coordinates are
+smaller than the parent's, or invariant when the parent moves. A bounds check
+is not a coordinate-system check.

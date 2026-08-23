@@ -156,13 +156,25 @@ BeforeAll {
             })
 
         if ($WithGroup) {
+            $groupId = "${Provider}:PSModule:Demo"
             $nodes.Add([PSCustomObject]@{
                     PSTypeName = 'PS.DrawIO.ProviderNode'
-                    Id         = "${Provider}:PSModule:Demo"
+                    Id         = $groupId
                     Type       = 'PSModule'
                     Name       = 'Demo'
                     Label      = 'Demo'
                     IsGroup    = $true
+                })
+            # Nested child so parent-relative layout assertions have a non-empty set.
+            # Only used when -WithGroup is set (currently one acceptance It).
+            $nodes.Add([PSCustomObject]@{
+                    PSTypeName = 'PS.DrawIO.ProviderNode'
+                    Id         = "${Provider}:PSFunction:Invoke-Nested"
+                    Type       = 'PSFunction'
+                    Name       = 'Invoke-Nested'
+                    Label      = 'Invoke-Nested'
+                    Visibility = 'Private'
+                    ParentId   = $groupId
                 })
         }
 
@@ -505,11 +517,21 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         $cells = Get-MxCellElement -XmlText $emitted.Text
         $group = @($cells | Where-Object { $_.id -match 'PSModule:Demo' -or $_.value -eq 'Demo' }) | Select-Object -First 1
         $group | Should -Not -BeNullOrEmpty -Because 'group vertex must be emitted'
+        $parentX = [double]$group.mxGeometry.x
+        $parentY = [double]$group.mxGeometry.y
+        # Parent must sit at a non-zero canvas origin so relative vs absolute can differ.
+        # Relative children are measured from the parent origin (small pad); absolute
+        # children include the parent's canvas offset and are therefore not smaller
+        # than the parent on both axes.
+        $parentX | Should -BeGreaterThan 0 -Because 'group must be placed at a non-zero canvas X so relative/absolute can be distinguished'
+        $parentY | Should -BeGreaterThan 0 -Because 'group must be placed at a non-zero canvas Y so relative/absolute can be distinguished'
         $children = @($cells | Where-Object { $_.parent -eq $group.id -and $_.vertex -eq '1' })
         $children.Count | Should -BeGreaterThan 0 -Because 'group must contain child vertices'
         foreach ($child in $children) {
-            [double]$child.mxGeometry.x | Should -BeGreaterOrEqual 0 -Because 'child coordinates are relative to parent'
-            [double]$child.mxGeometry.y | Should -BeGreaterOrEqual 0 -Because 'child coordinates are relative to parent'
+            $cx = [double]$child.mxGeometry.x
+            $cy = [double]$child.mxGeometry.y
+            $cx | Should -BeLessThan $parentX -Because "child X ($cx) must be parent-relative (smaller than parent canvas X $parentX); absolute placement is not"
+            $cy | Should -BeLessThan $parentY -Because "child Y ($cy) must be parent-relative (smaller than parent canvas Y $parentY); absolute placement is not"
         }
     }
 
