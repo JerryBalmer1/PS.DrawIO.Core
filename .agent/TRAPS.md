@@ -197,3 +197,21 @@ the underlying failure already happened twice.
 return pair), record it under Blocked after the second occurrence and stop.
 Do not open a third terminal to "try a different approach" at the same
 symptom. Check `TRAPS.md` before forming a new hypothesis.
+
+### T-015 — Broad error-message regex greens a weaker subsystem
+
+**Symptom:** An acceptance test passes while asserting something narrower than
+its checkbox label promises, because the assertion regex is broad enough to
+match an unrelated error.
+
+**Cause:** An error-message pattern with several alternatives will match errors
+from other subsystems. Here, `schema|invalid|violation|mxfile|node` matched an
+IR identity error because it contained `node`. This is the same class of
+label-overclaim as T-012, but the mechanism is a loose `Should -Match` list
+plus a fallback branch that substitutes IR rejection for schema validation
+when `Test-PSDrawIODiagramSchema` is absent.
+
+**Fix:** When asserting on an error message, match a phrase specific to the
+subsystem under test, not a list of generic words. If a test has a fallback
+branch for an unimplemented feature, that branch must fail, not substitute a
+weaker assertion.
