@@ -716,5 +716,615 @@ Describe 'PS.DrawIO.Core IR unit' {
         Remove-Module PS.DrawIO.Core -Force -ErrorAction SilentlyContinue
         Import-Module (Join-Path $root 'src/PS.DrawIO.Core.psd1') -Force
     }
+
+    It 'schema rejects whitespace-only Content with a schema validation message' {
+        # Empty string is rejected by the binder before the body; whitespace reaches IsNullOrWhiteSpace.
+        try {
+            Test-PSDrawIODiagramSchema -Content " `t`n" -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'Diagram schema validation failed: Content is empty.'
+        }
+    }
+
+    It 'schema rejects malformed XML naming well-formed failure' {
+        try {
+            Test-PSDrawIODiagramSchema -Content '<mxfile><diagram>' -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Diagram schema validation failed'
+            $_.Exception.Message | Should -Match 'not well-formed|well-formed'
+        }
+    }
+
+    It 'schema rejects non-mxfile root via XSD validation event path' {
+        # Well-formed XML that is not a valid mxfile document — must hit ValidationEventHandler.
+        $xml = '<?xml version="1.0" encoding="UTF-8"?><not-mxfile><child/></not-mxfile>'
+        try {
+            Test-PSDrawIODiagramSchema -Content $xml -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Diagram schema validation failed'
+            $_.Exception.Message | Should -Not -Match 'Content is empty'
+            $_.Exception.Message | Should -Not -Match 'not well-formed'
+        }
+    }
+
+    It 'schema rejects missing structural id=1 parent=0 after XSD passes' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="p" name="Page-1"><mxGraphModel><root><mxCell id="0"/></root></mxGraphModel></diagram></mxfile>
+'@
+        try {
+            Test-PSDrawIODiagramSchema -Content $xml -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Diagram schema validation failed'
+            $_.Exception.Message | Should -Match 'id="1"|parent="0"|default layer'
+        }
+    }
+
+    It 'schema accepts structural roots carried only on UserObject wrappers' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="p" name="Page-1"><mxGraphModel><root><UserObject id="0" label="root"><mxCell/></UserObject><UserObject id="1" label="layer"><mxCell parent="0"/></UserObject></root></mxGraphModel></diagram></mxfile>
+'@
+        Test-PSDrawIODiagramSchema -Content $xml | Should -BeTrue
+    }
+
+    It 'Export throws when destination directory does not exist' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $missingDir = Join-Path $TestDrive 'no-such-export-dir'
+        $path = Join-Path $missingDir 'out.drawio'
+        Test-Path -LiteralPath $missingDir | Should -BeFalse
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Export directory does not exist'
+            $_.Exception.Message | Should -Match ([regex]::Escape($missingDir))
+        }
+        Test-Path -LiteralPath $path | Should -BeFalse
+    }
+
+    It 'Import throws when the draw.io file path does not exist' {
+        $missing = Join-Path $TestDrive 'definitely-missing-import.drawio'
+        Test-Path -LiteralPath $missing | Should -BeFalse
+        try {
+            Import-PSDrawIODiagram -Path $missing -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'Draw.io file not found'
+            $_.Exception.Message | Should -Match ([regex]::Escape($missing))
+        }
+    }
+
+    It 'layout throws when IR has no Nodes property' {
+        $bad = [pscustomobject]@{ Provider = 'Demo' }
+        try {
+            Invoke-PSDrawIOLayout -IR $bad -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'IR is invalid: Nodes property is required.'
+        }
+    }
+
+    It 'layout throws when strategy returns a PSCustomObject without Nodes' {
+        $ir = ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo
+        $bad = { param($IR) [pscustomobject]@{ NotNodes = 1 } }
+        try {
+            Invoke-PSDrawIOLayout -IR $ir -Strategy $bad -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'Layout strategy returned a non-IR object: Nodes property is missing.'
+        }
+    }
+
+    It 'Export rejects IR node Id that collides with reserved root cell 0' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{ Id = '0'; Type = 'Widget'; Name = 'Rootish'; Label = 'X'; X = 1; Y = 1; Width = 10; Height = 10 }
+            )
+            Edges      = @()
+        }
+        $path = Join-Path $TestDrive 'unit-reserved-id.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match "collides with reserved root cell id"
+            $_.Exception.Message | Should -Match "'0'"
+        }
+        Test-Path -LiteralPath $path | Should -BeFalse
+    }
+
+    It 'Export rejects IR with duplicate node Ids naming the id' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{ Id = 'Demo:Widget:Dup'; Type = 'Widget'; Name = 'Dup'; Label = 'A'; X = 1; Y = 1; Width = 10; Height = 10 }
+                [pscustomobject]@{ Id = 'Demo:Widget:Dup'; Type = 'Widget'; Name = 'Dup'; Label = 'B'; X = 2; Y = 2; Width = 10; Height = 10 }
+            )
+            Edges      = @()
+        }
+        $path = Join-Path $TestDrive 'unit-dup-id.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'duplicate node Id'
+            $_.Exception.Message | Should -Match 'Demo:Widget:Dup'
+        }
+    }
+
+    It 'Export rejects IR node with blank Id' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{ Id = '   '; Type = 'Widget'; Name = 'Blank'; Label = 'Blank'; X = 1; Y = 1; Width = 10; Height = 10 }
+            )
+            Edges      = @()
+        }
+        $path = Join-Path $TestDrive 'unit-blank-id.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'IR is invalid: node Id is required (offending node).'
+        }
+    }
+
+    It 'Export rejects IR missing Nodes property' {
+        $ir = [pscustomobject]@{ Provider = 'Demo' }
+        $path = Join-Path $TestDrive 'unit-no-nodes.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'IR is invalid: Nodes property is required.'
+        }
+    }
+
+    It 'Export emits group style and sizes parent from children via built-in layout' {
+        $graph = [pscustomobject]@{
+            Provider = 'Demo'
+            Nodes    = @(
+                [pscustomobject]@{
+                    Id      = 'Demo:Group:Box'
+                    Type    = 'Group'
+                    Name    = 'Box'
+                    Label   = 'Box'
+                    IsGroup = $true
+                }
+                [pscustomobject]@{
+                    Id       = 'Demo:Widget:ChildA'
+                    Type     = 'Widget'
+                    Name     = 'ChildA'
+                    Label    = 'ChildA'
+                    ParentId = 'Demo:Group:Box'
+                }
+                [pscustomobject]@{
+                    Id       = 'Demo:Widget:ChildB'
+                    Type     = 'Widget'
+                    Name     = 'ChildB'
+                    Label    = 'ChildB'
+                    ParentId = 'Demo:Group:Box'
+                }
+            )
+            Edges = @()
+        }
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo)
+        $box = @($ir.Nodes | Where-Object { $_.Id -eq 'Demo:Group:Box' })[0]
+        $child = @($ir.Nodes | Where-Object { $_.Id -eq 'Demo:Widget:ChildA' })[0]
+        $null -ne $box.X | Should -BeTrue
+        $null -ne $child.X | Should -BeTrue
+        [double]$box.Width | Should -BeGreaterThan 120
+        [double]$box.Height | Should -BeGreaterThan 40
+        $child.ParentId | Should -Be 'Demo:Group:Box'
+
+        $path = Join-Path $TestDrive 'unit-group.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'id="Demo:Group:Box"'
+        $xml | Should -Match 'group'
+        $xml | Should -Match 'parent="Demo:Group:Box"'
+    }
+
+    It 'Export resolves LinkTemplate from node Metadata Path and Line' {
+        $graph = [pscustomobject]@{
+            Provider     = 'Demo'
+            LinkTemplate = 'vscode://file/{Path}:{Line}'
+            Nodes        = @(
+                [pscustomobject]@{
+                    Id       = 'Demo:Widget:Linked'
+                    Type     = 'Widget'
+                    Name     = 'Linked'
+                    Label    = 'Linked'
+                    Metadata = [pscustomobject]@{ Path = 'src/Demo.ps1'; Line = '42' }
+                }
+            )
+            Edges = @()
+        }
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo)
+        $path = Join-Path $TestDrive 'unit-link-template.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'UserObject'
+        $xml | Should -Match 'link="vscode://file/src/Demo.ps1:42"'
+    }
+
+    It 'Export uses nested Geometry coordinates when flat X/Y are absent' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{
+                    Id       = 'Demo:Widget:Geo'
+                    Type     = 'Widget'
+                    Name     = 'Geo'
+                    Label    = 'Geo'
+                    Geometry = [pscustomobject]@{ X = 11; Y = 22; Width = 33; Height = 44 }
+                }
+            )
+            Edges = @()
+        }
+        $path = Join-Path $TestDrive 'unit-geometry-bag.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'x="11"'
+        $xml | Should -Match 'y="22"'
+        $xml | Should -Match 'width="33"'
+        $xml | Should -Match 'height="44"'
+    }
+
+    It 'Export wraps edge with Link in UserObject and keeps edge endpoints' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $ir.Edges[0] | Add-Member -NotePropertyName Link -NotePropertyValue 'https://example.test/edge' -Force
+        $ir.Edges[0] | Add-Member -NotePropertyName Id -NotePropertyValue 'edge-linked-1' -Force
+        $ir.Edges[0] | Add-Member -NotePropertyName Style -NotePropertyValue 'endArrow=block;html=1' -Force
+        $ir.Edges[0] | Add-Member -NotePropertyName Metadata -NotePropertyValue ([pscustomobject]@{
+                Value         = 'calls'
+                Parent        = '1'
+                XmlAttributes = [pscustomobject]@{ edgeNote = 'keep' }
+            }) -Force
+        $path = Join-Path $TestDrive 'unit-edge-uo.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'UserObject[^>]*id="edge-linked-1"'
+        $xml | Should -Match 'link="https://example.test/edge"'
+        $xml | Should -Match 'edgeNote="keep"'
+        $xml | Should -Match 'source="Demo:Widget:Get-Item"'
+        $xml | Should -Match 'target="Demo:Widget:Set-Item"'
+        $xml | Should -Match 'endArrow=block'
+    }
+
+    It 'Export falls back to node Name when Label is absent' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{
+                    Id     = 'Demo:Widget:NameOnly'
+                    Type   = 'Widget'
+                    Name   = 'NameOnly'
+                    X      = 5; Y = 5; Width = 20; Height = 10
+                }
+            )
+            Edges = @()
+        }
+        $path = Join-Path $TestDrive 'unit-name-label.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'value="NameOnly"'
+    }
+
+    It 'Export applies IR Metadata model attributes onto mxGraphModel' {
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        $ir | Add-Member -NotePropertyName Metadata -NotePropertyValue ([pscustomobject]@{
+                ModelAttributes = [pscustomobject]@{ grid = '1'; gridSize = '10' }
+            }) -Force
+        $path = Join-Path $TestDrive 'unit-model-attrs.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'grid="1"'
+        $xml | Should -Match 'gridSize="10"'
+    }
+
+    It 'Import throws when root element is not mxfile' {
+        $path = Join-Path $TestDrive 'unit-not-mxfile.drawio'
+        [System.IO.File]::WriteAllText($path, '<?xml version="1.0"?><html><body/></html>')
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'missing a root mxfile element'
+            $_.Exception.Message | Should -Match ([regex]::Escape($path))
+        }
+    }
+
+    It 'Import throws when diagram element is missing' {
+        $path = Join-Path $TestDrive 'unit-no-diagram.drawio'
+        [System.IO.File]::WriteAllText($path, '<?xml version="1.0"?><mxfile host="x"></mxfile>')
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'missing a diagram element'
+            $_.Exception.Message | Should -Match ([regex]::Escape($path))
+        }
+    }
+
+    It 'Import throws when mxGraphModel is missing' {
+        $path = Join-Path $TestDrive 'unit-no-model.drawio'
+        [System.IO.File]::WriteAllText($path, '<?xml version="1.0"?><mxfile host="x"><diagram id="p" name="P"></diagram></mxfile>')
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'missing mxGraphModel'
+            $_.Exception.Message | Should -Match ([regex]::Escape($path))
+        }
+    }
+
+    It 'Import throws when root element under model is missing' {
+        $path = Join-Path $TestDrive 'unit-no-root.drawio'
+        [System.IO.File]::WriteAllText($path, '<?xml version="1.0"?><mxfile host="x"><diagram id="p" name="P"><mxGraphModel></mxGraphModel></diagram></mxfile>')
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'missing root'
+            $_.Exception.Message | Should -Match ([regex]::Escape($path))
+        }
+    }
+
+    It 'Import maps edge UserObject label link and custom attrs' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="a" value="A" style="whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="40" height="20" as="geometry"/></mxCell><mxCell id="b" value="B" style="whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="100" y="10" width="40" height="20" as="geometry"/></mxCell><UserObject id="e1" label="uses" link="https://example.test/e" edgeNote="n1"><mxCell id="e1" style="endArrow=classic;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry"/></mxCell></UserObject></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-edge-uo.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        $edge = @($ir.Edges | Where-Object { $_.From -eq 'a' -and $_.To -eq 'b' })[0]
+        $edge | Should -Not -BeNullOrEmpty
+        $edge.Link | Should -Be 'https://example.test/e'
+        $edge.Metadata.Value | Should -Be 'uses'
+        $edge.Metadata.XmlAttributes.edgeNote | Should -Be 'n1'
+    }
+
+    It 'ConvertTo-PSDrawIOIR copies node Variant ParentId IsGroup and Metadata' {
+        $graph = [pscustomobject]@{
+            Provider = 'Demo'
+            Nodes    = @(
+                [pscustomobject]@{
+                    Type     = 'Widget'
+                    Name     = 'Rich'
+                    Label    = 'Rich'
+                    Variant  = 'Public'
+                    ParentId = 'Demo:Group:Box'
+                    IsGroup  = $false
+                    Metadata = [pscustomobject]@{ Source = 'fixture'; Tier = 2 }
+                }
+                [pscustomobject]@{
+                    Type    = 'Group'
+                    Name    = 'Box'
+                    Label   = 'Box'
+                    IsGroup = $true
+                }
+            )
+            Edges = @()
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo
+        $rich = @($ir.Nodes | Where-Object { $_.Name -eq 'Rich' })[0]
+        $rich.Variant | Should -Be 'Public'
+        $rich.ParentId | Should -Be 'Demo:Group:Box'
+        $rich.IsGroup | Should -BeFalse
+        $rich.Metadata.Source | Should -Be 'fixture'
+        $rich.Metadata.Tier | Should -Be 2
+        $box = @($ir.Nodes | Where-Object { $_.Name -eq 'Box' })[0]
+        $box.IsGroup | Should -BeTrue
+    }
+
+    It 'ConvertTo-PSDrawIOIR maps Visibility onto Variant when Variant is absent' {
+        $graph = [pscustomobject]@{
+            Provider = 'Demo'
+            Nodes    = @(
+                [pscustomobject]@{
+                    Type       = 'Widget'
+                    Name       = 'Vis'
+                    Label      = 'Vis'
+                    Visibility = 'Private'
+                }
+            )
+            Edges = @()
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo
+        $ir.Nodes[0].Variant | Should -Be 'Private'
+    }
+
+    It 'ConvertTo-PSDrawIOIR preserves edge Id CallCount Extents aggregates' {
+        $graph = [pscustomobject]@{
+            Provider = 'Demo'
+            Nodes    = @(
+                [pscustomobject]@{ Type = 'Widget'; Name = 'A'; Label = 'A' }
+                [pscustomobject]@{ Type = 'Widget'; Name = 'B'; Label = 'B' }
+            )
+            Edges    = @(
+                [pscustomobject]@{
+                    Id        = 'e-custom'
+                    From      = 'Demo:Widget:A'
+                    To        = 'Demo:Widget:B'
+                    Type      = 'Calls'
+                    CallCount = 3
+                    Extents   = @(@{ Start = 1; End = 2 })
+                }
+            )
+        }
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider Demo
+        $ir.Edges[0].Id | Should -Be 'e-custom'
+        $ir.Edges[0].Aggregates.CallCount | Should -Be 3
+        @($ir.Edges[0].Aggregates.Extents).Count | Should -Be 1
+    }
+
+    It 'requires -Content on Test-PSDrawIODiagramSchema' {
+        $p = (Get-Command Test-PSDrawIODiagramSchema).Parameters['Content']
+        $attr = $p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+        @($attr | Where-Object Mandatory).Count | Should -BeGreaterThan 0
+        ($attr | Select-Object -First 1).Mandatory | Should -BeTrue
+    }
+
+    It 'Export throws Path is required when Path is whitespace' {
+        # Null IR / empty Path are binder-rejected before body; whitespace Path hits body guard.
+        $ir = Invoke-PSDrawIOLayout -IR (ConvertTo-PSDrawIOIR -Graph (New-UnitProviderGraph) -Provider Demo)
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path '   ' -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'Path is required.'
+        }
+    }
+
+    It 'Import throws Path is required when Path is whitespace' {
+        try {
+            Import-PSDrawIODiagram -Path '   ' -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Be 'Path is required.'
+        }
+    }
+
+    It 'schema load failure names the schema path when xsd content is temporarily invalid' {
+        $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+        $xsd = Join-Path $root 'src/Schema/mxfile.xsd'
+        Test-Path -LiteralPath $xsd | Should -BeTrue
+        $original = [System.IO.File]::ReadAllText($xsd)
+        try {
+            # File must exist so Resolve-PSDrawIOSchemaPath succeeds; invalid XSD hits Add/Compile catch.
+            [System.IO.File]::WriteAllText($xsd, '<?xml version="1.0"?><not-a-schema/>')
+            try {
+                Test-PSDrawIODiagramSchema -Content '<?xml version="1.0"?><mxfile host="x"><diagram id="p" name="P"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>' -ErrorAction Stop
+                throw 'expected terminating error was not thrown'
+            }
+            catch {
+                $_.Exception.Message | Should -Match 'Diagram schema validation failed'
+                $_.Exception.Message | Should -Match 'could not load schema'
+                $_.Exception.Message | Should -Match 'mxfile\.xsd'
+            }
+        }
+        finally {
+            [System.IO.File]::WriteAllText($xsd, $original)
+        }
+        $restored = (Get-FileHash -LiteralPath $xsd -Algorithm SHA256).Hash.ToLowerInvariant()
+        $restored | Should -Be '905db85d4e8ebec0e91518cdd62982e0afb3f09ebdcaf9e6b1952957a606639a'
+    }
+
+    It 'Export rejects edge From naming a node absent from IR' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{ Id = 'Demo:Widget:Only'; Type = 'Widget'; Name = 'Only'; Label = 'Only'; X = 1; Y = 1; Width = 10; Height = 10 }
+            )
+            Edges      = @(
+                [pscustomobject]@{ From = 'Demo:Widget:Missing'; To = 'Demo:Widget:Only'; Type = 'DependsOn' }
+            )
+        }
+        $path = Join-Path $TestDrive 'unit-edge-from-missing.drawio'
+        try {
+            Export-PSDrawIODiagram -IR $ir -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match "From='Demo:Widget:Missing'"
+            $_.Exception.Message | Should -Match 'absent from the IR'
+        }
+    }
+
+    It 'Export applies Shape and IsGroup into style string' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{
+                    Id      = 'Demo:Widget:Shaped'
+                    Type    = 'Widget'
+                    Name    = 'Shaped'
+                    Label   = 'Shaped'
+                    Shape   = 'ellipse'
+                    IsGroup = $true
+                    X       = 10; Y = 10; Width = 50; Height = 50
+                }
+            )
+            Edges = @()
+        }
+        $path = Join-Path $TestDrive 'unit-shape-group.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'shape=ellipse'
+        $xml | Should -Match 'perimeter=ellipsePerimeter'
+        $xml | Should -Match 'group'
+    }
+
+    It 'Export regenerates edge Id when it collides with a node Id' {
+        $ir = [pscustomobject]@{
+            PSTypeName = 'PS.DrawIO.IR'
+            Provider   = 'Demo'
+            Nodes      = @(
+                [pscustomobject]@{ Id = 'Demo:Widget:A'; Type = 'Widget'; Name = 'A'; Label = 'A'; X = 1; Y = 1; Width = 10; Height = 10 }
+                [pscustomobject]@{ Id = 'Demo:Widget:B'; Type = 'Widget'; Name = 'B'; Label = 'B'; X = 20; Y = 1; Width = 10; Height = 10 }
+            )
+            Edges      = @(
+                [pscustomobject]@{
+                    Id   = 'Demo:Widget:A'
+                    From = 'Demo:Widget:A'
+                    To   = 'Demo:Widget:B'
+                    Type = 'DependsOn'
+                }
+            )
+        }
+        $path = Join-Path $TestDrive 'unit-edge-id-collision.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $path | Out-Null
+        $xml = Get-Content -LiteralPath $path -Raw
+        $xml | Should -Match 'edge="1"'
+        $xml | Should -Match 'source="Demo:Widget:A"'
+        $xml | Should -Match 'target="Demo:Widget:B"'
+        # Colliding edge id must be regenerated away from the node id.
+        ([regex]::Matches($xml, 'id="Demo:Widget:A"')).Count | Should -Be 1
+        $xml | Should -Match 'id="edge-0-'
+    }
+
+    It 'Import promotes UserObject id when nested mxCell omits id' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><UserObject id="uo-only" label="Wrapped" customKeep="yes"><mxCell style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="5" y="6" width="7" height="8" as="geometry"/></mxCell></UserObject></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-uo-id.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        $ir.Nodes.Count | Should -Be 1
+        $ir.Nodes[0].Id | Should -Be 'uo-only'
+        $ir.Nodes[0].Label | Should -Be 'Wrapped'
+        $ir.Nodes[0].X | Should -Be 5
+        $ir.Nodes[0].Metadata.XmlAttributes.customKeep | Should -Be 'yes'
+    }
 }
 
