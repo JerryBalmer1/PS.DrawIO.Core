@@ -185,6 +185,16 @@ Clear `.agent/EXECUTION.md` and write its Plan section before the first command.
 7. Never edit `TRAPS.md` to make a task pass.
 8. End every task with the verification block.
 
+### Feasibility pass
+
+Before implementing any Definition-of-Done checkbox, state in `EXECUTION.md`:
+
+1. What input would make this checkbox's test FAIL. If you cannot name one, the test is decoration and the checkbox is not implementable as written.
+2. Every artifact the test needs, and whether each exists. Name the file and confirm it. A test needing `mxfile.xsd`, a registered provider, or a sibling module cannot pass until that thing exists.
+3. Whether any dependency lives in ANOTHER REPOSITORY. If so, STOP. A checkbox in one repository that requires another repository to change is a spec defect, not an implementation task. Report it.
+
+This costs minutes. Skipping it has cost hours.
+
 Verification block — run these four, paste raw output into `EXECUTION.md`:
 
 ```powershell

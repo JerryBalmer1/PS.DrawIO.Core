@@ -24,12 +24,18 @@ Task: <one line>
 - [ ] T1 <task>
 - [ ] T2 <task>
 
+## Feasibility
+1. Failing input: <what would make this checkbox's test FAIL; if none, not implementable>
+2. Artifacts needed: <path — exists | missing> (every file, fixture, registered provider, sibling module)
+3. Cross-repo dependency: none | STOP — <other repo and required change>
+
 ## T<n> — <task name>
 Attempt 1: <what was tried>
   Result: OK | FAIL — <what happened>
-  Cause: <TRAPS.md id if applicable, else the actual cause>
+  Cause: <TRAPS.md id MUST be cited when the symptom appears there; else the actual cause>
 Attempt 2: <only if attempt 1 failed>
   Result: ...
+  Cause: <same citation rule; citing the same TRAPS id twice in one run means STOP and move to Blocked>
 
 ## Results
 - [x] T1 — <outcome>

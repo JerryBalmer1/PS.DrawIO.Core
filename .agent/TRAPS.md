@@ -240,3 +240,30 @@ executed and verified.
 **Fix:** Delete temps, then run `git status --short` and paste the raw output
 into the log as proof. A cleanup claim without that output is a claim, not a
 fact.
+
+### T-018 — DoD checkbox fails only after substantial implementation
+
+**Symptom:** A Definition-of-Done checkbox cannot be made to pass, and this is
+only discovered after substantial implementation effort.
+
+**Cause:** The checkbox assumed an artifact or an integration that does not
+exist. A checkbox is a claim about the world; implementing one without
+checking the claim first is building on an assumption.
+
+**Fix:** Run the feasibility pass in `AGENTS.md` before writing code. Name the
+failing input, list every artifact the test needs, and stop if any dependency
+lives in another repository.
+
+### T-019 — Recorded trap hit repeatedly and treated as new each time
+
+**Symptom:** A trap recorded in this file is hit repeatedly during a single run
+and treated as a new problem each time.
+
+**Cause:** `TRAPS.md` was read at task start and not consulted again when
+something failed. Reading is not applying.
+
+**Fix:** When a command fails, check `TRAPS.md` BEFORE forming a hypothesis. If
+the symptom is there, cite the trap ID in `EXECUTION.md` and apply the stated
+fix. If you cite the same ID twice in one run, stop and record it under
+Blocked — that is the two-symptom rule, and citing makes it visible rather than
+invisible.
