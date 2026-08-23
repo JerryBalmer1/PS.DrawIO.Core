@@ -1,4 +1,4 @@
-﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSAvoidGlobalVars',
     '',
     Justification = 'T-005: Pester 5 discovery/run are separate scopes; label registrations must survive re-exec via a process-global list cleared on each file load.'
@@ -227,7 +227,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'Resolves a semantic type') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $ir | Should -Not -BeNullOrEmpty
         $styled = @($ir.Nodes | Where-Object { $_.Style -or $_.ResolvedStyle -or $_.ShapeStyle })
         $styled.Count | Should -BeGreaterThan 0 -Because 'Core must resolve semantic types through Registry and apply returned style'
@@ -237,10 +237,10 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
         $graph.Nodes[0].Type = 'DefinitelyNotRegisteredTypeZZZ'
-        { ConvertTo-PSDrawIOIR -Graph $graph -ErrorAction Stop } |
+        { ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -ErrorAction Stop } |
             Should -Throw -Because 'unregistered semantic types must fail loudly'
         try {
-            ConvertTo-PSDrawIOIR -Graph $graph -ErrorAction Stop
+            ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -ErrorAction Stop
         }
         catch {
             $_.Exception.Message | Should -Match 'DefinitelyNotRegisteredTypeZZZ'
@@ -251,7 +251,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'LinkTemplate') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $emitted = Get-EmittedDiagramXml -IR $ir
         $emitted.Text | Should -Match 'UserObject|link=' -Because 'declared LinkTemplate must appear on emitted UserObject/link surface'
     }
@@ -259,7 +259,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'LayoutHints') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $ir.LayoutHints | Should -Not -BeNullOrEmpty -Because 'LayoutHints must be carried into IR for the layout strategy'
         # Geometry must not be interpreted during convert — no coordinates stamped yet
         # unless a layout strategy has been invoked explicitly.
@@ -294,7 +294,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'ConvertTo-PSDrawIOIR') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $ir | Should -Not -BeNullOrEmpty
         @($ir.Nodes).Count | Should -BeGreaterThan 0
         @($ir.Edges).Count | Should -BeGreaterThan 0
@@ -303,7 +303,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'provider-qualified') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         foreach ($node in @($ir.Nodes)) {
             $node.Id | Should -Match '^[^:]+:[^:]+:.+$' -Because "IR node Id '$($node.Id)' must be Provider:Type:Name"
         }
@@ -312,14 +312,14 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'names a node absent') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph -WithMissingEdgeEndpoint
-        { ConvertTo-PSDrawIOIR -Graph $graph -ErrorAction Stop } |
+        { ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider -ErrorAction Stop } |
             Should -Throw -Because 'edges naming absent nodes must be rejected, not dropped'
     }
 
     It (Get-Label 'PSTypeName') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $ir -is [PSCustomObject] | Should -BeTrue -Because 'IR must cross boundaries as PSCustomObject, not a class instance'
         @($ir.PSObject.TypeNames) | Should -Not -BeNullOrEmpty
         $ir.PSObject.TypeNames[0] | Should -Not -Be 'System.Management.Automation.PSCustomObject'
@@ -329,7 +329,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'round-trips through JSON') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $json = $ir | ConvertTo-Json -Depth 20
         $round = $json | ConvertFrom-Json
         ($round | ConvertTo-Json -Depth 20) | Should -Be ($ir | ConvertTo-Json -Depth 20)
@@ -344,7 +344,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         $cmd = Get-Command -Name 'Invoke-PSDrawIOLayout' -ErrorAction SilentlyContinue
         $cmd | Should -Not -BeNullOrEmpty -Because 'layout must be invoked through a named strategy interface (Invoke-PSDrawIOLayout)'
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $laidOut | Should -Not -BeNullOrEmpty
     }
@@ -352,7 +352,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'One built-in strategy') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $vertices = @($laidOut.Nodes | Where-Object { -not $_.IsEdge })
         $vertices.Count | Should -BeGreaterThan 0
@@ -365,7 +365,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'test double strategy') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $double = {
             param($IR)
             foreach ($n in @($IR.Nodes)) {
@@ -385,7 +385,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'non-zero') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $cells = Get-MxCellElement -XmlText $emitted.Text | Where-Object { $_.vertex -eq '1' }
@@ -400,7 +400,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'sibling vertices overlap') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $vertices = @(Get-MxCellElement -XmlText $emitted.Text | Where-Object { $_.vertex -eq '1' })
@@ -423,7 +423,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'relative to the parent') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph -WithGroup
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $cells = Get-MxCellElement -XmlText $emitted.Text
@@ -466,7 +466,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'Export-PSDrawIODiagram') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $path = Join-Path $TestDrive 'export-basic.drawio'
         Export-PSDrawIODiagram -IR $laidOut -Path $path
@@ -477,7 +477,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'mxCell id="0"') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $emitted.Text | Should -Match '<mxCell\s+id="0"\s*/>'
@@ -487,7 +487,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'uncompressed XML') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $emitted.Text | Should -Match '<mxfile\b'
@@ -500,7 +500,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'no XML comments') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $emitted.Text | Should -Not -Match '<!--'
@@ -509,7 +509,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'Cell ids are unique') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $ids = @(Get-MxCellElement -XmlText $emitted.Text | ForEach-Object { $_.id })
@@ -520,7 +520,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'never appear on the same cell') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $both = @(Get-MxCellElement -XmlText $emitted.Text | Where-Object { $_.vertex -eq '1' -and $_.edge -eq '1' })
@@ -530,7 +530,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'HTML in a') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph -WithHtmlLabel
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $emitted.Text | Should -Not -Match 'value="[^"]*<b>'
@@ -543,7 +543,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
         $graph = Get-AcceptanceProviderGraph
         $graph.Nodes[0].Type = 'PSFunction'
         $graph.Nodes[0] | Add-Member -NotePropertyName Shape -NotePropertyValue 'ellipse' -Force
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $emitted.Text | Should -Match 'perimeter='
@@ -560,7 +560,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
             Select-Object -First 1 -ExpandProperty FullName
         $xsd | Should -Not -BeNullOrEmpty -Because 'mxfile.xsd must be available in-repo for in-process validation'
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
 
@@ -621,7 +621,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'file Core wrote') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $path = Join-Path $TestDrive 'roundtrip-core.drawio'
         Export-PSDrawIODiagram -IR $laidOut -Path $path
@@ -757,7 +757,7 @@ Describe 'PS.DrawIO.Core acceptance' -Tag Acceptance {
     It (Get-Label 'pile at the origin') -Tag Acceptance {
         Assert-CoreModuleAvailable
         $graph = Get-AcceptanceProviderGraph
-        $ir = ConvertTo-PSDrawIOIR -Graph $graph
+        $ir = ConvertTo-PSDrawIOIR -Graph $graph -Provider $graph.Provider
         $laidOut = Invoke-PSDrawIOLayout -IR $ir
         $emitted = Get-EmittedDiagramXml -IR $laidOut
         $vertices = @(Get-MxCellElement -XmlText $emitted.Text | Where-Object { $_.vertex -eq '1' })
