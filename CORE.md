@@ -152,36 +152,52 @@ If a provider ever needs custom placement, it registers a **named strategy** aga
 
 ## 6. The pipeline
 
+Intended order is fixed for reasoning even when a stage is not built yet.
+**Implemented today** vs **intended, not implemented in v1** is marked below.
+Fields each implemented pass sets are detailed in [`docs/IR-SCHEMA.md`](docs/IR-SCHEMA.md).
+
 ```
    Front-end / provider adapter
-        │  domain graph → IR (Ids qualified, ends closed)
+        │  domain graph → IR (ConvertTo-PSDrawIOIR; ends closed;
+        │  Ids qualified when Core materializes — see §4)
         ▼
-   Resolve          registry: style, hints, link templates
+   Resolve          [implemented] optional injected resolver copies declaration
+                    Style → Style + ResolvedStyle; LinkTemplate when present.
+                    Core never loads the Registry module (ADR 0004).
         │
         ▼
-   Theme            apply theme variables / defaults to styles and metrics
+   Theme            [intended — not implemented in v1]
+                    apply theme variables / defaults to styles and metrics
         │
         ▼
-   Measure          text and padding → preferred width/height
+   Measure          [intended — not implemented in v1]
+                    text and padding → preferred width/height
+                    (built-in layout uses fixed default cell sizes today)
         │
         ▼
-   Layout           assign x/y (swappable strategy; see §5)
+   Layout           [implemented] Invoke-PSDrawIOLayout / built-in strategy
+                    assigns flat X, Y, Width, Height (see §5)
         │
         ▼
-   Route            edge waypoints / orthogonal choices
+   Route            [intended — not implemented in v1]
+                    edge waypoints / orthogonal choices
+                    (emit writes mxGeometry relative="1" only)
         │
         ▼
-   Emit             mxGraphModel (+ mxfile wrapper when required) → validate → write
+   Emit             [implemented] ConvertTo-PSDrawIODiagramXml →
+                    schema validate → Export-PSDrawIODiagram write
 ```
 
 ### Why theme runs before layout
 
 Themes change **font**, **padding**, and default style metrics. Those change measured **size**. Size changes **geometry**. Layout that runs before theme measures the wrong boxes and places them wrong. Theme is not cosmetic frosting after coordinates are fixed; it is an input to measure and layout.
 
+**That ordering is a constraint on future work, not a description of current behaviour.** The theme pass is **not implemented in v1**. Until it exists, layout does not receive theme-adjusted metrics; the built-in strategy uses its own fixed defaults. When theme (and measure) are built, they must run **before** layout for the reasons above — do not invert the order to “theme the finished coordinates.”
+
 ### Front-ends and back-ends
 
 - **Front-ends** produce IR (provider adapters, later the DSL, tests, fixtures)
-- **Ordered passes** transform IR in place or as pure stages — order above is fixed for v1 reasoning even when a pass is a no-op
+- **Ordered passes** transform IR in place or as pure stages — the order above is fixed for v1 reasoning; unbuilt stages are skipped, not reordered
 - **Back-ends** emit: primary back-end is uncompressed `.drawio` XML; a layout strategy may instead yield a `#create` URL when that strategy is selected
 
 ---
