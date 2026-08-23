@@ -1,4 +1,4 @@
-﻿function ConvertTo-PSDrawIODiagramXml {
+function ConvertTo-PSDrawIODiagramXml {
     <#
     .SYNOPSIS
     Builds uncompressed draw.io mxfile XML from a laid-out IR using the XML DOM.
@@ -27,10 +27,8 @@
             throw 'IR is invalid: node Id is required (offending node).'
         }
         $nid = [string]$n.Id
-        # Provider:Type:Name (ADR 0001). Bare ids are rejected as invalid IR materialization.
-        if ($nid -notmatch '^[^:]+:[^:]+:.+$') {
-            throw ("IR is invalid: node Id '{0}' is not Provider:Type:Name (offending node)." -f $nid)
-        }
+        # ADR 0001 qualifies Ids Core materializes. Imported / hand-edited files
+        # may carry bare ids (e.g. hand-1); do not reject them on emit.
         if ($nodeById.ContainsKey($nid)) {
             throw ("IR is invalid: duplicate node Id '{0}'." -f $nid)
         }
@@ -119,7 +117,6 @@
             if ($joined -notmatch '(?i)\bshape=') {
                 $parts.Add(('shape={0}' -f $shape))
             }
-            # Non-rectangular shapes require a matching perimeter= (CORE.md §7).
             if ($shape -cne 'rectangle' -and $shape -cne 'rect' -and $joined -notmatch '(?i)\bperimeter=') {
                 $parts.Add(('perimeter={0}Perimeter' -f $shape))
             }
@@ -140,20 +137,50 @@
         return $style
     }
 
+    $applyAttrBag = {
+        param([System.Xml.XmlElement]$el, $bag)
+        if ($null -eq $bag) { return }
+        foreach ($p in @($bag.PSObject.Properties)) {
+            if ($null -eq $p.Name -or [string]::IsNullOrWhiteSpace([string]$p.Name)) { continue }
+            if ($el.HasAttribute($p.Name)) { continue }
+            $null = $el.SetAttribute([string]$p.Name, [string]$p.Value)
+        }
+    }
+
     $doc = [System.Xml.XmlDocument]::new()
     $null = $doc.AppendChild($doc.CreateXmlDeclaration('1.0', 'UTF-8', $null))
 
     $mxfile = $doc.CreateElement('mxfile')
-    $null = $mxfile.SetAttribute('host', 'app.diagrams.net')
     $null = $doc.AppendChild($mxfile)
 
     $diagram = $doc.CreateElement('diagram')
-    $null = $diagram.SetAttribute('id', 'page-1')
-    $null = $diagram.SetAttribute('name', 'Page-1')
     $null = $mxfile.AppendChild($diagram)
 
     $model = $doc.CreateElement('mxGraphModel')
     $null = $diagram.AppendChild($model)
+
+    $null = $mxfile.SetAttribute('host', 'app.diagrams.net')
+    $null = $diagram.SetAttribute('id', 'page-1')
+    $null = $diagram.SetAttribute('name', 'Page-1')
+
+    if ($null -ne $IR.PSObject.Properties['Metadata'] -and $null -ne $IR.Metadata) {
+        $im = $IR.Metadata
+        if ($null -ne $im.PSObject.Properties['MxFileAttributes'] -and $null -ne $im.MxFileAttributes) {
+            foreach ($p in @($im.MxFileAttributes.PSObject.Properties)) {
+                $null = $mxfile.SetAttribute([string]$p.Name, [string]$p.Value)
+            }
+        }
+        if ($null -ne $im.PSObject.Properties['DiagramAttributes'] -and $null -ne $im.DiagramAttributes) {
+            foreach ($p in @($im.DiagramAttributes.PSObject.Properties)) {
+                $null = $diagram.SetAttribute([string]$p.Name, [string]$p.Value)
+            }
+        }
+        if ($null -ne $im.PSObject.Properties['ModelAttributes'] -and $null -ne $im.ModelAttributes) {
+            foreach ($p in @($im.ModelAttributes.PSObject.Properties)) {
+                $null = $model.SetAttribute([string]$p.Name, [string]$p.Value)
+            }
+        }
+    }
 
     $root = $doc.CreateElement('root')
     $null = $model.AppendChild($root)
@@ -172,7 +199,15 @@
     $null = $usedIds.Add('1')
 
     $appendGeometry = {
-        param([System.Xml.XmlElement]$cell, $node)
+        param([System.Xml.XmlElement]$cell, $node, [switch]$EdgeRelative)
+        if ($EdgeRelative) {
+            $geo = $doc.CreateElement('mxGeometry')
+            $null = $geo.SetAttribute('relative', '1')
+            $null = $geo.SetAttribute('as', 'geometry')
+            $null = $cell.AppendChild($geo)
+            return
+        }
+
         $x = & $getCoord $node 'X' 'X'
         $y = & $getCoord $node 'Y' 'Y'
         $w = & $getCoord $node 'Width' 'Width'
@@ -226,11 +261,19 @@
         $null = $cell.SetAttribute('parent', $parent)
         & $appendGeometry $cell $n
 
+        if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata -and
+            $null -ne $n.Metadata.PSObject.Properties['XmlAttributes'] -and $null -ne $n.Metadata.XmlAttributes) {
+            & $applyAttrBag $cell $n.Metadata.XmlAttributes
+        }
+
         if ($link) {
             $uo = $doc.CreateElement('UserObject')
             $null = $uo.SetAttribute('label', $label)
             $null = $uo.SetAttribute('link', $link)
-            # id stays on mxCell so //mxCell id queries and uniqueness checks work.
+            if ($null -ne $n.PSObject.Properties['Metadata'] -and $null -ne $n.Metadata -and
+                $null -ne $n.Metadata.PSObject.Properties['UserObjectAttributes'] -and $null -ne $n.Metadata.UserObjectAttributes) {
+                & $applyAttrBag $uo $n.Metadata.UserObjectAttributes
+            }
             $null = $uo.AppendChild($cell)
             $null = $root.AppendChild($uo)
         }
@@ -262,19 +305,33 @@
             if (-not $style.EndsWith(';')) { $style += ';' }
         }
 
+        $parent = '1'
+        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata -and
+            $null -ne $e.Metadata.PSObject.Properties['Parent'] -and -not [string]::IsNullOrWhiteSpace([string]$e.Metadata.Parent)) {
+            $parent = [string]$e.Metadata.Parent
+        }
+
+        $value = ''
+        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata -and
+            $null -ne $e.Metadata.PSObject.Properties['Value']) {
+            $value = [string]$e.Metadata.Value
+        }
+
         $cell = $doc.CreateElement('mxCell')
         $null = $cell.SetAttribute('id', $eid)
-        $null = $cell.SetAttribute('value', '')
+        $null = $cell.SetAttribute('value', $value)
         $null = $cell.SetAttribute('style', $style)
         $null = $cell.SetAttribute('edge', '1')
-        $null = $cell.SetAttribute('parent', '1')
+        $null = $cell.SetAttribute('parent', $parent)
         $null = $cell.SetAttribute('source', [string]$e.From)
         $null = $cell.SetAttribute('target', [string]$e.To)
 
-        $geo = $doc.CreateElement('mxGeometry')
-        $null = $geo.SetAttribute('relative', '1')
-        $null = $geo.SetAttribute('as', 'geometry')
-        $null = $cell.AppendChild($geo)
+        if ($null -ne $e.PSObject.Properties['Metadata'] -and $null -ne $e.Metadata -and
+            $null -ne $e.Metadata.PSObject.Properties['XmlAttributes'] -and $null -ne $e.Metadata.XmlAttributes) {
+            & $applyAttrBag $cell $e.Metadata.XmlAttributes
+        }
+
+        & $appendGeometry $cell $e -EdgeRelative
         $null = $root.AppendChild($cell)
         $edgeIndex++
     }

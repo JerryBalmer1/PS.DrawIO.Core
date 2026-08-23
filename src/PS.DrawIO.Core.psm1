@@ -12,5 +12,6 @@ foreach ($folder in @('Classes', 'Private', 'Public')) {
 Export-ModuleMember -Function @(
     'ConvertTo-PSDrawIOIR',
     'Invoke-PSDrawIOLayout',
-    'Export-PSDrawIODiagram'
+    'Export-PSDrawIODiagram',
+    'Import-PSDrawIODiagram'
 )

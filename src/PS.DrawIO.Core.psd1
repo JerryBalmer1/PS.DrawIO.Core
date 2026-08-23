@@ -8,7 +8,8 @@
     FunctionsToExport = @(
         'ConvertTo-PSDrawIOIR',
         'Invoke-PSDrawIOLayout',
-        'Export-PSDrawIODiagram'
+        'Export-PSDrawIODiagram',
+        'Import-PSDrawIODiagram'
     )
     PrivateData       = @{
         PSData = @{

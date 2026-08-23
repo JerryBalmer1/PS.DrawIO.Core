@@ -521,5 +521,107 @@ Describe 'PS.DrawIO.Core IR unit' {
         [double]$v[0].mxGeometry.height | Should -Be 40
         [double]$v[1].mxGeometry.x | Should -Be 200
     }
+
+    It 'Import reads vertex id value and geometry' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="n1" value="Hello" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="40" y="50" width="120" height="40" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-vertex.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        @($ir.Nodes).Count | Should -Be 1
+        $ir.Nodes[0].Id | Should -Be 'n1'
+        $ir.Nodes[0].Label | Should -Be 'Hello'
+        [double]$ir.Nodes[0].X | Should -Be 40
+        [double]$ir.Nodes[0].Y | Should -Be 50
+        [double]$ir.Nodes[0].Width | Should -Be 120
+        [double]$ir.Nodes[0].Height | Should -Be 40
+    }
+
+    It 'Import maps edge source and target to From and To' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="a" value="A" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="40" height="20" as="geometry" /></mxCell><mxCell id="b" value="B" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="100" y="10" width="40" height="20" as="geometry" /></mxCell><mxCell id="e0" value="" style="endArrow=classic;html=1;rounded=0;" edge="1" parent="1" source="a" target="b"><mxGeometry relative="1" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-edge.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        @($ir.Edges).Count | Should -Be 1
+        $ir.Edges[0].From | Should -Be 'a'
+        $ir.Edges[0].To | Should -Be 'b'
+        $ir.Edges[0].Id | Should -Be 'e0'
+    }
+
+    It 'Import preserves customAttr and Export re-emits it' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net" agent="accept-test"><diagram id="u" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="u1" value="X" style="whiteSpace=wrap;" vertex="1" parent="1" customAttr="keep-me"><mxGeometry x="10" y="10" width="40" height="20" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-custom.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        $ir.Nodes[0].Metadata.XmlAttributes.customAttr | Should -Be 'keep-me'
+        $out = Join-Path $TestDrive 'unit-import-custom-out.drawio'
+        Export-PSDrawIODiagram -IR $ir -Path $out | Out-Null
+        (Get-Content -LiteralPath $out -Raw) | Should -Match 'customAttr="keep-me"'
+        (Get-Content -LiteralPath $out -Raw) | Should -Match 'agent="accept-test"'
+    }
+
+    It 'Import throws naming the file on malformed XML' {
+        $path = Join-Path $TestDrive 'unit-import-bad.xml'
+        [System.IO.File]::WriteAllText($path, '<not-closed')
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match ([regex]::Escape($path))
+            $_.Exception.Message | Should -Match 'parse|Failed|XML'
+        }
+    }
+
+    It 'Import throws when mxCell id 0 or 1 is missing' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="n1" value="X" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="1" y="1" width="10" height="10" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-missing-root.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        try {
+            Import-PSDrawIODiagram -Path $path -ErrorAction Stop
+            throw 'expected terminating error was not thrown'
+        }
+        catch {
+            $_.Exception.Message | Should -Match 'id 0|id 1|must contain'
+        }
+    }
+
+    It 'Import reads UserObject link onto node.Link' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="page-1" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><UserObject label="Linked" link="vscode://file/demo.ps1:3"><mxCell id="L1" value="Linked" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="80" height="30" as="geometry" /></mxCell></UserObject></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-import-link.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        $ir.Nodes[0].Id | Should -Be 'L1'
+        $ir.Nodes[0].Label | Should -Be 'Linked'
+        $ir.Nodes[0].Link | Should -Be 'vscode://file/demo.ps1:3'
+    }
+
+    It 'requires -Path on Import-PSDrawIODiagram' {
+        $p = (Get-Command Import-PSDrawIODiagram).Parameters['Path']
+        $attr = $p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+        $attr.Mandatory | Should -BeTrue
+    }
+
+    It 'Export accepts bare node Ids from Import' {
+        $xml = @'
+<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net"><diagram id="hand" name="Page-1"><mxGraphModel><root><mxCell id="0" /><mxCell id="1" parent="0" /><mxCell id="hand-1" value="Hand" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="40" y="40" width="80" height="40" as="geometry" /></mxCell></root></mxGraphModel></diagram></mxfile>
+'@
+        $path = Join-Path $TestDrive 'unit-bare-in.drawio'
+        [System.IO.File]::WriteAllText($path, $xml)
+        $ir = Import-PSDrawIODiagram -Path $path
+        $ir.Nodes[0].Id | Should -Be 'hand-1'
+        $out = Join-Path $TestDrive 'unit-bare-out.drawio'
+        { Export-PSDrawIODiagram -IR $ir -Path $out -ErrorAction Stop } | Should -Not -Throw
+        (Get-Content -LiteralPath $out -Raw) | Should -Match 'id="hand-1"'
+    }
 }
 
